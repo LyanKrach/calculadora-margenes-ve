@@ -1,0 +1,22 @@
+# COPIA este archivo como android/key.properties (ese archivo NO se sube a Git)
+# y completa los valores de TU keystore. Nunca compartas este archivo ni
+# el archivo .jks: quien lo tenga puede firmar apps como si fueras tú.
+#
+# Cómo crear el keystore (una sola vez, en tu PC):
+#   keytool -genkeypair -v -keystore ~/margenesve-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias margenesve
+#
+# Luego, en android/key.properties pon:
+#   storePassword=<la contraseña del keystore>
+#   keyPassword=<la contraseña de la key>
+#   keyAlias=margenesve
+#   storeFile=/ruta/absoluta/a/margenesve-release.jks
+#
+# Guarda una copia de seguridad del .jks y de estas contraseñas fuera
+# del PC (si lo pierdes, NO podrás actualizar la app en Play Store).
+
+storePassword=
+keyPassword=
+keyAlias=margenesve
+storeFile=
