@@ -116,7 +116,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   static String _formatCleanDouble(double val) {
     if (val == 0) return '0';
-    final rounded = double.parse(val.toStringAsFixed(4));
+    final rounded = double.parse(val.toStringAsFixed(2));
     if (rounded % 1 == 0) return rounded.toInt().toString();
     return rounded.toString();
   }

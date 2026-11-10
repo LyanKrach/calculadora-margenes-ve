@@ -601,7 +601,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
 
   static String _fmt(double v) {
     if (v == 0) return '0';
-    final r = double.parse(v.toStringAsFixed(4));
+    final r = double.parse(v.toStringAsFixed(2));
     return r % 1 == 0 ? r.toInt().toString() : r.toString();
   }
 

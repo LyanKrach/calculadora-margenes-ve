@@ -8,6 +8,6 @@ String fmtBs(double value) =>
 String fmtUsd(double value) =>
     NumberFormat('#,##0.00', 'es_VE').format(value);
 
-/// Formato de tasa con 4 decimales (ej. 897,5383).
+/// Formato de tasa con 2 decimales (ej. 899,27).
 String fmtRate(double value) =>
-    NumberFormat('#,##0.0000', 'es_VE').format(value);
+    NumberFormat('#,##0.00', 'es_VE').format(value);

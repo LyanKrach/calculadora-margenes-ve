@@ -49,9 +49,9 @@ class RatesService {
 
   // Valores reales observados el 2026-11-09 (último recurso si no hay
   // red ni caché: la app nunca arranca sin una tasa que mostrar).
-  static const double fallbackBcvUsd = 897.5383;
-  static const double fallbackEuroBcv = 1001.186;
-  static const double fallbackBinanceUsdt = 1045.00;
+  static const double fallbackBcvUsd = 899.27;
+  static const double fallbackEuroBcv = 1006.61;
+  static const double fallbackBinanceUsdt = 1082.50;
 
   // ------------------------------------------------------------------
   // BCV dólar — DolarApi, campo `promedio`.
@@ -63,7 +63,8 @@ class RatesService {
           .timeout(_timeout);
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        final value = (json['promedio'] as num).toDouble();
+        final raw = (json['promedio'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
         final rate = Rate(
           source: RateSource.bcvUsd,
           value: value,
@@ -88,7 +89,8 @@ class RatesService {
           .timeout(_timeout);
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        final value = (json['promedio'] as num).toDouble();
+        final raw = (json['promedio'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
         final rate = Rate(
           source: RateSource.euroBcv,
           value: value,
@@ -132,9 +134,10 @@ class RatesService {
             .whereType<double>()
             .toList();
         if (prices.isNotEmpty) {
+          final raw = median(prices);
           final rate = Rate(
             source: RateSource.binanceUsdt,
-            value: median(prices),
+            value: double.parse(raw.toStringAsFixed(2)),
             fetchedAt: DateTime.now(),
           );
           await _saveToCache(rate);
@@ -171,7 +174,8 @@ class RatesService {
           .timeout(_timeout);
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        final value = (json['promedio'] as num).toDouble();
+        final raw = (json['promedio'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
         final rate = Rate(
           source: RateSource.binanceUsdt,
           value: value,
