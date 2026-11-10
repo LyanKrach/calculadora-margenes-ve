@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/rate.dart';
+import '../models/rate_snapshot.dart';
 import 'calculator.dart';
 
 /// Servicio de tasas: BCV dólar, Binance USDT P2P, Euro BCV y personalizada.
@@ -43,7 +44,8 @@ class RatesService {
 
   static const _cachePrefix = 'rate_cache_';
   static const _customRateKey = 'custom_rate_value';
-  static const _dolarVzlaKeyKey = 'dolarvzla_api_key';
+  static const _snapshotsKey = 'rate_snapshots_history';
+  static const int maxSnapshots = 10;
 
   // Valores reales observados el 2026-11-09 (último recurso si no hay
   // red ni caché: la app nunca arranca sin una tasa que mostrar).
@@ -184,17 +186,66 @@ class RatesService {
   }
 
   /// Las 3 tasas de red en paralelo. Si una falla, trae su caché/respaldo.
+  ///
+  /// Registra un snapshot histórico solo si hay datos frescos de red y se
+  /// cumple la condición de variación (> 0.5 %) o tiempo (≥ 1 hora).
   Future<Map<RateSource, Rate>> fetchAll() async {
     final results = await Future.wait([
       fetchBcvUsd(),
       fetchBinanceUsdt(),
       fetchEuroBcv(),
     ]);
-    return {
+    final map = {
       RateSource.bcvUsd: results[0],
       RateSource.binanceUsdt: results[1],
       RateSource.euroBcv: results[2],
     };
+
+    final hasFreshNetworkData = results.any((r) => !r.isCached);
+    if (hasFreshNetworkData) {
+      await recordSnapshotIfNeeded(
+        RateSnapshot(
+          timestamp: DateTime.now(),
+          bcvUsd: results[0].value,
+          binanceUsdt: results[1].value,
+          euroBcv: results[2].value,
+        ),
+      );
+    }
+
+    return map;
+  }
+
+  // ------------------------------------------------------------------
+  // Historial de snapshots de tasas (máximo 10 entradas).
+  // Append solo si: (a) variación > 0.5 % vs último snapshot, o (b) ≥ 1 hora.
+  // ------------------------------------------------------------------
+  Future<List<RateSnapshot>> getSnapshots() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_snapshotsKey);
+    return RateSnapshot.listFromJson(raw);
+  }
+
+  Future<bool> recordSnapshotIfNeeded(RateSnapshot candidate) async {
+    if (!candidate.isValid) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final current = List<RateSnapshot>.from(
+      RateSnapshot.listFromJson(prefs.getString(_snapshotsKey)),
+    );
+    final last = current.isEmpty ? null : current.last;
+
+    if (!RateSnapshot.shouldAppend(last: last, candidate: candidate)) {
+      return false;
+    }
+
+    current.add(candidate);
+    while (current.length > maxSnapshots) {
+      current.removeAt(0);
+    }
+
+    final encoded = jsonEncode(current.map((s) => s.toJson()).toList());
+    await prefs.setString(_snapshotsKey, encoded);
+    return true;
   }
 
   // ------------------------------------------------------------------
@@ -208,28 +259,6 @@ class RatesService {
   Future<void> setCustomRate(double value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_customRateKey, value);
-  }
-
-  // ------------------------------------------------------------------
-  // API key opcional de DolarVzla (solo en SharedPreferences, NUNCA
-  // hardcodeada). Se pega en Ajustes; si está vacía, no se usa.
-  // Nota: DolarVzla es un respaldo opcional futuro; las 3 tasas
-  // principales funcionan sin key (DolarApi es gratis y sin key,
-  // Binance P2P es público).
-  // ------------------------------------------------------------------
-  Future<String?> getDolarVzlaKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString(_dolarVzlaKeyKey);
-    return (key == null || key.isEmpty) ? null : key;
-  }
-
-  Future<void> setDolarVzlaKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (key.trim().isEmpty) {
-      await prefs.remove(_dolarVzlaKeyKey);
-    } else {
-      await prefs.setString(_dolarVzlaKeyKey, key.trim());
-    }
   }
 
   // ------------------------------------------------------------------

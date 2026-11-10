@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../services/rates_service.dart';
+import '../models/seller_profile.dart';
+import '../services/auth_service.dart';
+import '../services/seller_profile_service.dart';
+import '../services/theme_service.dart';
+import 'auth_screen.dart';
+import 'seller_profile_screen.dart';
 
-/// Ajustes: API key opcional de DolarVzla, información de la app y
-/// enlaces a la política de privacidad.
-///
-/// SEGURIDAD: la key se guarda SOLO en SharedPreferences del teléfono.
-/// Nunca se hardcodea en el código, nunca se sube a Git, nunca se envía
-/// a ningún servidor propio: solo se usa como header `x-dolarvzla-key`
-/// contra la API de DolarVzla si el usuario decide pegarla.
+/// Ajustes: Sincronización en la nube, Apariencia (Tema claro/oscuro),
+/// Perfil de cobro (Pago Móvil) e información de la aplicación.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -17,41 +17,22 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _service = RatesService();
-  final _keyCtrl = TextEditingController();
-  bool _showKey = false;
-  bool _loaded = false;
+  final _profileService = SellerProfileService();
+  final _authService = AuthService();
+  SellerProfile _profile = const SellerProfile.empty();
 
   @override
   void initState() {
     super.initState();
-    _service.getDolarVzlaKey().then((key) {
-      _keyCtrl.text = key ?? '';
-      setState(() => _loaded = true);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final profile = await _profileService.getProfile();
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
     });
-  }
-
-  @override
-  void dispose() {
-    _keyCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    await _service.setDolarVzlaKey(_keyCtrl.text);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API key guardada en este teléfono')),
-    );
-  }
-
-  Future<void> _delete() async {
-    await _service.setDolarVzlaKey('');
-    _keyCtrl.clear();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API key eliminada')),
-    );
   }
 
   @override
@@ -62,51 +43,153 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'API key opcional — DolarVzla',
+            'Cuenta y Sincronización (Firebase)',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Opcional. Las 3 tasas principales (BCV, Binance, Euro) funcionan '
-            'sin key. Si pegas tu key gratuita de DolarVzla, queda guardada '
-            'solo en este teléfono (SharedPreferences) y se usa como respaldo '
-            'adicional. Nunca se comparte ni se sube a ningún lado.',
-          ),
-          const SizedBox(height: 12),
-          if (!_loaded)
-            const LinearProgressIndicator()
-          else
-            TextField(
-              controller: _keyCtrl,
-              obscureText: !_showKey,
-              decoration: InputDecoration(
-                labelText: 'API key DolarVzla (x-dolarvzla-key)',
-                hintText: 'Pégala aquí',
-                suffixIcon: IconButton(
-                  icon: Icon(_showKey ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _showKey = !_showKey),
-                ),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                _authService.isSignedIn
+                    ? Icons.cloud_done
+                    : Icons.person_outline,
               ),
+              title: Text(
+                _authService.isSignedIn
+                    ? (_authService.currentUser?.isAnonymous == true
+                        ? 'Sesión de Invitado Activa'
+                        : (_authService.currentUser?.email ??
+                            'Cuenta Sincronizada'))
+                    : 'Iniciar sesión o crear cuenta',
+              ),
+              subtitle: Text(
+                _authService.isSignedIn
+                    ? 'Tus productos e historial están sincronizados en Cloud Firestore.'
+                    : 'Respalda tus productos e historial en la nube o úsala en modo local.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AuthScreen(),
+                  ),
+                );
+                await _loadData();
+              },
             ),
-          const SizedBox(height: 12),
-          Row(children: [
-            FilledButton(onPressed: _save, child: const Text('Guardar key')),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: _delete, child: const Text('Eliminar')),
-          ]),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Apariencia (Fondo Claro y Oscuro)',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeService.instance.themeModeNotifier,
+            builder: (context, currentMode, _) {
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Selecciona el tema visual de la aplicación:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                      SegmentedButton<ThemeMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            icon: Icon(Icons.dark_mode_outlined),
+                            label: Text('Oscuro'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            icon: Icon(Icons.light_mode_outlined),
+                            label: Text('Claro'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.system,
+                            icon: Icon(Icons.brightness_auto_outlined),
+                            label: Text('Sistema'),
+                          ),
+                        ],
+                        selected: {currentMode},
+                        onSelectionChanged: (modes) {
+                          ThemeService.instance.setThemeMode(modes.first);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Datos de Cobro',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('Perfil de Vendedor (Pago Móvil)'),
+              subtitle: Text(
+                _profile.hasPagoMovil
+                    ? '${_profile.bank} · ${_profile.phone} · ${_profile.idDocument}'
+                    : 'Configura tu banco, teléfono y cédula/RIF para adjuntarlos al mensaje del cliente.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SellerProfileScreen(),
+                  ),
+                );
+                await _loadData();
+              },
+            ),
+          ),
           const SizedBox(height: 24),
           const Text('Acerca de', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Card(
-            child: ListTile(
-              title: Text('Calculadora de Márgenes VE'),
-              subtitle: Text(
-                'Versión 1.0.0+1\n'
-                'Para vendedores en Venezuela: costo en USD, tasa del día, '
-                'comisiones y margen → precio en bolívares sin perder dinero.\n\n'
-                'Fuentes de tasas: DolarApi (BCV dólar y Euro BCV) y Binance P2P (USDT).\n'
-                'La app no recolecta cuentas ni datos personales. '
-                'Solo consulta tasas públicas. Ver PRIVACY_POLICY.md.',
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      'assets/icon/app_logo.png',
+                      width: 54,
+                      height: 54,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Calculadora de Márgenes VE',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Versión 1.0.0+1\n'
+                          'Para comerciantes en Venezuela: precios en bolívares calculados al instante con tasas BCV, Binance P2P y Euro oficial.\n\n'
+                          'Soporta cálculo Sobre Costo (Markup directo) y Sobre Venta (Margen financiero limpio).',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

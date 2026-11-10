@@ -1,13 +1,28 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
+import 'firebase_options.dart';
 import 'screens/calculator_screen.dart';
+import 'screens/products_screen.dart';
 import 'screens/rates_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/theme_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {
+    // Si falla la inicialización en un entorno sin servicios de Google,
+    // la app continúa operando en modo local (SharedPreferences).
+  }
+
+  await ThemeService.instance.init();
+
   // OBLIGATORIO: sin esto, DateFormat('...', 'es_VE') en la pantalla de
   // Tasas lanza LocaleDataException en runtime ("Locale data has not been
   // initialized"). Lo confirmó `flutter test` el 2026-11-09: NumberFormat
@@ -17,42 +32,28 @@ Future<void> main() async {
   runApp(const MargenesApp());
 }
 
-/// Calculadora de Márgenes VE — Material 3, tema oscuro gamer sobrio.
-/// 3 pestañas: Calculadora · Tasas · Ajustes.
+/// Calculadora de Márgenes VE — Material 3 con soporte para tema claro y oscuro.
+/// 4 pestañas: Calculadora · Productos · Tasas · Ajustes.
 class MargenesApp extends StatelessWidget {
   const MargenesApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Calculadora de Márgenes VE',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF22C55E), // verde gamer sobrio
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF0B0F14),
-        cardTheme: const CardThemeData(
-          color: Color(0xFF151B23),
-          elevation: 0,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF1E2630),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
-      home: const HomeScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.themeModeNotifier,
+      builder: (context, currentMode, _) {
+        return MaterialApp(
+          title: 'Calculadora de Márgenes VE',
+          debugShowCheckedModeBanner: false,
+          themeMode: currentMode,
+          theme: ThemeService.lightTheme,
+          darkTheme: ThemeService.darkTheme,
+          home: const HomeScreen(),
+        );
+      },
     );
   }
 }
-
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -66,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _pages = [
     CalculatorScreen(),
+    ProductsScreen(),
     RatesScreen(),
     SettingsScreen(),
   ];
@@ -82,6 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.calculate_outlined),
             selectedIcon: Icon(Icons.calculate),
             label: 'Calculadora',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
+            label: 'Productos',
           ),
           NavigationDestination(
             icon: Icon(Icons.currency_exchange_outlined),

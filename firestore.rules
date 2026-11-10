@@ -1,0 +1,241 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - User profile metadata (up to 15 keys, owner-scoped only)
+//
+// Subcollection: users/{userId}/products
+// Document ID: {productId}
+// Required Fields:
+//   - v: int (schema version)
+//   - id: string (1..120 chars)
+//   - name: string (1..120 chars)
+//   - costUsd: number (> 0)
+//   - marginPercent: number (>= 0 and < 100)
+//   - fixedExpenseBs: number (>= 0)
+//   - commissionPlatform: number (>= 0 and < 1)
+//   - commissionPaymentMethod: number (>= 0 and < 1)
+//   - commissionOther: number (>= 0 and < 1)
+//   - roundStep: int (in [10, 50, 100])
+//   - rateSourceName: string (in ['bcvUsd', 'binanceUsdt', 'euroBcv', 'custom'])
+//   - createdAt: string (1..60 chars, ISO-8601 timestamp string)
+//   - updatedAt: string (1..60 chars, ISO-8601 timestamp string)
+// Optional Fields:
+//   - category: string (0..80 chars) or null
+//   - customRateValue: number (>= 0) or null
+//
+// Subcollection: users/{userId}/history
+// Document ID: {historyId}
+// Required Fields:
+//   - v: int (schema version)
+//   - id: string (1..120 chars)
+//   - title: string (1..160 chars)
+//   - costUsd: number (> 0)
+//   - marginPercent: number (>= 0 and < 100)
+//   - fixedExpenseBs: number (>= 0)
+//   - commissionPlatform: number (>= 0 and < 1)
+//   - commissionPaymentMethod: number (>= 0 and < 1)
+//   - commissionOther: number (>= 0 and < 1)
+//   - roundStep: int (in [10, 50, 100])
+//   - rateSourceName: string (in ['bcvUsd', 'binanceUsdt', 'euroBcv', 'custom'])
+//   - rateValue: number (> 0)
+//   - finalPriceBs: number (> 0)
+//   - timestamp: string (1..60 chars, ISO-8601 timestamp string)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] == null ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalNonNegativeNumber(field) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] == null ||
+        (request.resource.data[field] is number &&
+         request.resource.data[field] >= 0);
+    }
+
+    function isValidCommission(value) {
+      return value is number && value >= 0 && value < 1;
+    }
+
+    function isValidRoundStep(value) {
+      return value is int && value in [10, 50, 100];
+    }
+
+    function isValidRateSourceName(value) {
+      return value is string &&
+        value in ['bcvUsd', 'binanceUsdt', 'euroBcv', 'custom'];
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidUserProfile(data) {
+      return data.keys().size() <= 15 &&
+        (!('uid' in data) || data.uid == request.auth.uid);
+    }
+
+    function isValidProduct(data) {
+      let requiredFields = [
+        'v',
+        'id',
+        'name',
+        'costUsd',
+        'marginPercent',
+        'fixedExpenseBs',
+        'commissionPlatform',
+        'commissionPaymentMethod',
+        'commissionOther',
+        'roundStep',
+        'rateSourceName',
+        'createdAt',
+        'updatedAt'
+      ];
+      let allowedFields = [
+        'v',
+        'id',
+        'name',
+        'category',
+        'costUsd',
+        'marginPercent',
+        'fixedExpenseBs',
+        'commissionPlatform',
+        'commissionPaymentMethod',
+        'commissionOther',
+        'roundStep',
+        'rateSourceName',
+        'customRateValue',
+        'createdAt',
+        'updatedAt'
+      ];
+      return hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        data.v is int &&
+        validStringLength('id', 1, 120) &&
+        validStringLength('name', 1, 120) &&
+        isValidOptionalString('category', 0, 80) &&
+        data.costUsd is number && data.costUsd > 0 &&
+        data.marginPercent is number && data.marginPercent >= 0 && data.marginPercent < 100 &&
+        data.fixedExpenseBs is number && data.fixedExpenseBs >= 0 &&
+        isValidCommission(data.commissionPlatform) &&
+        isValidCommission(data.commissionPaymentMethod) &&
+        isValidCommission(data.commissionOther) &&
+        isValidRoundStep(data.roundStep) &&
+        isValidRateSourceName(data.rateSourceName) &&
+        isValidOptionalNonNegativeNumber('customRateValue') &&
+        validStringLength('createdAt', 1, 60) &&
+        validStringLength('updatedAt', 1, 60);
+    }
+
+    function isValidHistoryEntry(data) {
+      let fields = [
+        'v',
+        'id',
+        'title',
+        'costUsd',
+        'marginPercent',
+        'fixedExpenseBs',
+        'commissionPlatform',
+        'commissionPaymentMethod',
+        'commissionOther',
+        'roundStep',
+        'rateSourceName',
+        'rateValue',
+        'finalPriceBs',
+        'timestamp'
+      ];
+      return hasRequiredFields(fields) &&
+        hasOnlyAllowedFields(fields) &&
+        data.v is int &&
+        validStringLength('id', 1, 120) &&
+        validStringLength('title', 1, 160) &&
+        data.costUsd is number && data.costUsd > 0 &&
+        data.marginPercent is number && data.marginPercent >= 0 && data.marginPercent < 100 &&
+        data.fixedExpenseBs is number && data.fixedExpenseBs >= 0 &&
+        isValidCommission(data.commissionPlatform) &&
+        isValidCommission(data.commissionPaymentMethod) &&
+        isValidCommission(data.commissionOther) &&
+        isValidRoundStep(data.roundStep) &&
+        isValidRateSourceName(data.rateSourceName) &&
+        data.rateValue is number && data.rateValue > 0 &&
+        data.finalPriceBs is number && data.finalPriceBs > 0 &&
+        validStringLength('timestamp', 1, 60);
+    }
+
+    // ===============================================================
+    // User-Scoped Data Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /products/{productId} {
+        allow get, list, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidProduct(request.resource.data);
+        allow update: if isOwner(userId) &&
+          isValidProduct(request.resource.data) &&
+          request.resource.data.id == resource.data.id;
+      }
+
+      match /history/{historyId} {
+        allow get, list, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHistoryEntry(request.resource.data);
+        allow update: if isOwner(userId) &&
+          isValidHistoryEntry(request.resource.data) &&
+          request.resource.data.id == resource.data.id;
+      }
+    }
+
+    // ===============================================================
+    // Default Deny All Other Paths
+    // ===============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

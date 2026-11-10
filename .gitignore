@@ -46,3 +46,13 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Secrets & Environment
+functions/.env
+functions/.env.local
+android/key.properties
+**/node_modules/
+android/app/google-services.json
+lib/firebase_options.dart
+
+

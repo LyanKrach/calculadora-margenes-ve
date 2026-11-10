@@ -6,22 +6,21 @@
 
 Calculadora de Márgenes VE es una calculadora para vendedores en Venezuela: a partir del costo de un producto en dólares, la tasa de cambio del día, las comisiones y el margen deseado, calcula el precio de venta en bolívares.
 
-## 2. Datos que NO recolectamos
+## 2. Privacidad y Cuenta Opcional en la Nube
 
-La app **no recolecta, no almacena en servidores ni comparte** ningún dato personal:
+La aplicación puede utilizarse **sin crear cuenta** en modo 100 % local:
 
-- No pedimos ni guardamos nombres, correos, teléfonos, cuentas ni contraseñas.
-- No pedimos ubicación.
-- No usamos analítica ni publicidad de terceros.
-- No hay cuentas de usuario ni inicio de sesión.
+- No pedimos ubicación, contactos, micrófono ni cámara.
+- No usamos publicidad de terceros.
+- **Sincronización opcional (Firebase Auth y Cloud Firestore):** si decides iniciar sesión (con correo y contraseña o como invitado), tu catálogo de productos y tu historial de cálculos se respaldan de forma privada bajo tu identificador de usuario (`users/{uid}`) en Google Cloud Firestore, protegidos por reglas de seguridad para que solo tú puedas leerlos o modificarlos.
 
 ## 3. Datos guardados solo en tu teléfono
 
 Lo siguiente se guarda únicamente en el almacenamiento local del teléfono (SharedPreferences) y nunca sale de él:
 
-- La última tasa consultada y su fecha (para mostrarla sin conexión).
-- La tasa personalizada que escribas.
-- Opcionalmente, tu API key de DolarVzla, si decides pegarla en Ajustes. Solo se usa como encabezado (`x-dolarvzla-key`) en consultas a la API de DolarVzla; no se envía a ningún otro destino.
+- La última tasa consultada, el historial reciente de fluctuaciones y su fecha (para mostrarlos sin conexión).
+- La tasa personalizada que escribas, así como la copia local de tu catálogo de productos, historial de cálculos y plantillas/presets guardados.
+- **Perfil de vendedor (Pago Móvil):** si decides configurar tu nombre comercial, RIF o cédula, número de teléfono, banco y notas de cobro, estos datos se almacenan **exclusivamente en el dispositivo** con el único fin de autocompletar el texto del mensaje de cobro que tú mismo copias o compartes. **Nunca se transmiten a ningún servidor propio ni de terceros.**
 
 Puedes borrar estos datos desinstalando la app o borrando sus datos desde Ajustes de Android.
 
