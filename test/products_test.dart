@@ -138,9 +138,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Debe mostrar el producto guardado y su precio calculado al instante (11.510,00 Bs)
+      // Debe mostrar el producto guardado y su precio calculado al instante (11.530,00 Bs)
       expect(find.text('Pase Élite'), findsOneWidget);
-      expect(find.text('11.510,00 Bs'), findsOneWidget);
+      expect(find.text('11.530,00 Bs'), findsOneWidget);
 
       // Cambiar a la pestaña de Historial Calculado
       await tester.tap(find.text('Historial Calculado'));

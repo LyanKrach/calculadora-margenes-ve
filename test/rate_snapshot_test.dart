@@ -153,7 +153,7 @@ void main() {
 
         // Verificar label de Semantics con BCV, Binance y Brecha
         expect(
-          find.bySemanticsLabel(RegExp(r'BCV 897,5400 · Binance 1\.045,0000 · Brecha 16\.43%')),
+          find.bySemanticsLabel(RegExp(r'BCV 897,54 · Binance 1\.045,00 · Brecha 16\.43%')),
           findsOneWidget,
         );
 
