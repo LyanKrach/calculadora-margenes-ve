@@ -23,12 +23,13 @@ rules_version = '2';
 //   - commissionPlatform: number (>= 0 and < 1)
 //   - commissionPaymentMethod: number (>= 0 and < 1)
 //   - commissionOther: number (>= 0 and < 1)
-//   - roundStep: int (in [10, 50, 100])
+//   - roundStep: int (in [0, 1, 10, 50, 100])
 //   - rateSourceName: string (in ['bcvUsd', 'binanceUsdt', 'euroBcv', 'custom'])
 //   - createdAt: string (1..60 chars, ISO-8601 timestamp string)
 //   - updatedAt: string (1..60 chars, ISO-8601 timestamp string)
 // Optional Fields:
 //   - category: string (0..80 chars) or null
+//   - marginMode: string (in ['onCost', 'onSale']) or null
 //   - customRateValue: number (>= 0) or null
 //
 // Subcollection: users/{userId}/history
@@ -43,11 +44,15 @@ rules_version = '2';
 //   - commissionPlatform: number (>= 0 and < 1)
 //   - commissionPaymentMethod: number (>= 0 and < 1)
 //   - commissionOther: number (>= 0 and < 1)
-//   - roundStep: int (in [10, 50, 100])
+//   - roundStep: int (in [0, 1, 10, 50, 100])
 //   - rateSourceName: string (in ['bcvUsd', 'binanceUsdt', 'euroBcv', 'custom'])
 //   - rateValue: number (> 0)
 //   - finalPriceBs: number (> 0)
 //   - timestamp: string (1..60 chars, ISO-8601 timestamp string)
+// Optional Fields:
+//   - marginMode: string (in ['onCost', 'onSale']) or null
+//   - precioExactoBs: number (>= 0) or null
+//   - gananciaBs: number or null
 //
 // ===============================================================
 
@@ -95,12 +100,25 @@ service cloud.firestore {
          request.resource.data[field] >= 0);
     }
 
+    function isValidOptionalNumber(field) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] == null ||
+        request.resource.data[field] is number;
+    }
+
+    function isValidOptionalMarginMode(field) {
+      return !(field in request.resource.data) ||
+        request.resource.data[field] == null ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field] in ['onCost', 'onSale']);
+    }
+
     function isValidCommission(value) {
       return value is number && value >= 0 && value < 1;
     }
 
     function isValidRoundStep(value) {
-      return value is int && value in [10, 50, 100];
+      return value is int && value in [0, 1, 10, 50, 100];
     }
 
     function isValidRateSourceName(value) {
@@ -146,6 +164,7 @@ service cloud.firestore {
         'commissionOther',
         'roundStep',
         'rateSourceName',
+        'marginMode',
         'customRateValue',
         'createdAt',
         'updatedAt'
@@ -164,13 +183,14 @@ service cloud.firestore {
         isValidCommission(data.commissionOther) &&
         isValidRoundStep(data.roundStep) &&
         isValidRateSourceName(data.rateSourceName) &&
+        isValidOptionalMarginMode('marginMode') &&
         isValidOptionalNonNegativeNumber('customRateValue') &&
         validStringLength('createdAt', 1, 60) &&
         validStringLength('updatedAt', 1, 60);
     }
 
     function isValidHistoryEntry(data) {
-      let fields = [
+      let requiredFields = [
         'v',
         'id',
         'title',
@@ -186,8 +206,27 @@ service cloud.firestore {
         'finalPriceBs',
         'timestamp'
       ];
-      return hasRequiredFields(fields) &&
-        hasOnlyAllowedFields(fields) &&
+      let allowedFields = [
+        'v',
+        'id',
+        'title',
+        'costUsd',
+        'marginPercent',
+        'fixedExpenseBs',
+        'commissionPlatform',
+        'commissionPaymentMethod',
+        'commissionOther',
+        'roundStep',
+        'rateSourceName',
+        'marginMode',
+        'rateValue',
+        'finalPriceBs',
+        'precioExactoBs',
+        'gananciaBs',
+        'timestamp'
+      ];
+      return hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
         data.v is int &&
         validStringLength('id', 1, 120) &&
         validStringLength('title', 1, 160) &&
@@ -199,8 +238,11 @@ service cloud.firestore {
         isValidCommission(data.commissionOther) &&
         isValidRoundStep(data.roundStep) &&
         isValidRateSourceName(data.rateSourceName) &&
+        isValidOptionalMarginMode('marginMode') &&
         data.rateValue is number && data.rateValue > 0 &&
         data.finalPriceBs is number && data.finalPriceBs > 0 &&
+        isValidOptionalNonNegativeNumber('precioExactoBs') &&
+        isValidOptionalNumber('gananciaBs') &&
         validStringLength('timestamp', 1, 60);
     }
 
