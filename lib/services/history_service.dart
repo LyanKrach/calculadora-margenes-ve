@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,7 +8,7 @@ import 'auth_service.dart';
 
 /// Servicio para el historial de productos calculados (`calc_history_list`)
 /// y la colección de plantillas / presets (`calc_presets_list`), con
-/// sincronización automática en `Cloud Firestore` (`users/{uid}/history`)
+/// sincronización por cuenta en `Cloud Firestore` (`users/{uid}/history`)
 /// cuando el usuario ha iniciado sesión.
 class HistoryService {
   static const String _historyKey = 'calc_history_list';
@@ -26,13 +27,36 @@ class HistoryService {
     return db.collection('users').doc(uid).collection('history');
   }
 
+  String _historyCacheKey() {
+    final uid = _currentUid;
+    return (uid != null && uid.isNotEmpty) ? '${_historyKey}_$uid' : _historyKey;
+  }
+
+  String _presetsCacheKey() {
+    final uid = _currentUid;
+    return (uid != null && uid.isNotEmpty) ? '${_presetsKey}_$uid' : _presetsKey;
+  }
+
   // ------------------------------------------------------------------
-  // Historial (máximo 15 elementos locales + respaldo en Firestore)
+  // Historial (máximo 15 elementos locales aislados por cuenta + Firestore)
   // ------------------------------------------------------------------
   Future<List<HistoryEntry>> getHistory({bool syncRemote = true}) async {
     final prefs = await SharedPreferences.getInstance();
+
+    if (!AuthService.isFirebaseInitialized) {
+      return List<HistoryEntry>.from(
+        HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      );
+    }
+
+    final uid = _currentUid;
+    if (uid == null || uid.isEmpty) {
+      return const [];
+    }
+
+    final userKey = _historyCacheKey();
     final local = List<HistoryEntry>.from(
-      HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      HistoryEntry.listFromJson(prefs.getString(userKey)),
     );
 
     final col = _userHistoryCol;
@@ -41,34 +65,23 @@ class HistoryService {
     }
 
     try {
-      final snap = await col.get();
-      final byId = <String, HistoryEntry>{
-        for (final e in local) e.id: e,
-      };
+      final snap = await col.get().timeout(const Duration(seconds: 8));
+      final remoteList = <HistoryEntry>[];
       for (final doc in snap.docs) {
         final remoteEntry = HistoryEntry.fromJson(doc.data());
         if (remoteEntry.isValid) {
-          byId[remoteEntry.id] = remoteEntry;
+          remoteList.add(remoteEntry);
         }
       }
 
-      // Subir entradas locales que falten en Firestore
-      final remoteIds = snap.docs.map((d) => d.id).toSet();
-      for (final localEntry in local) {
-        if (!remoteIds.contains(localEntry.id)) {
-          await col.doc(localEntry.id).set(localEntry.toJson());
-        }
+      remoteList.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      if (remoteList.length > maxHistoryItems) {
+        remoteList.removeRange(maxHistoryItems, remoteList.length);
       }
 
-      final merged = byId.values.toList()
-        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      if (merged.length > maxHistoryItems) {
-        merged.removeRange(maxHistoryItems, merged.length);
-      }
-
-      final encoded = jsonEncode(merged.map((e) => e.toJson()).toList());
-      await prefs.setString(_historyKey, encoded);
-      return merged;
+      final encoded = jsonEncode(remoteList.map((e) => e.toJson()).toList());
+      await prefs.setString(userKey, encoded);
+      return remoteList;
     } catch (_) {
       return local;
     }
@@ -77,11 +90,32 @@ class HistoryService {
   Future<void> addHistoryEntry(HistoryEntry entry) async {
     if (!entry.isValid) return;
     final prefs = await SharedPreferences.getInstance();
+
+    if (!AuthService.isFirebaseInitialized) {
+      final current = List<HistoryEntry>.from(
+        HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      );
+      current.removeWhere((e) => e.id == entry.id);
+      current.insert(0, entry);
+      if (current.length > maxHistoryItems) {
+        current.removeRange(maxHistoryItems, current.length);
+      }
+      final encoded = jsonEncode(current.map((e) => e.toJson()).toList());
+      await prefs.setString(_historyKey, encoded);
+      return;
+    }
+
+    final col = _userHistoryCol;
+    final uid = _currentUid;
+    if (col == null || uid == null || uid.isEmpty) {
+      return;
+    }
+
+    final userKey = _historyCacheKey();
     final current = List<HistoryEntry>.from(
-      HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      HistoryEntry.listFromJson(prefs.getString(userKey)),
     );
 
-    // Insertar al inicio (más reciente primero) y podar a 15 elementos
     current.removeWhere((e) => e.id == entry.id);
     current.insert(0, entry);
     if (current.length > maxHistoryItems) {
@@ -89,64 +123,85 @@ class HistoryService {
     }
 
     final encoded = jsonEncode(current.map((e) => e.toJson()).toList());
-    await prefs.setString(_historyKey, encoded);
+    await prefs.setString(userKey, encoded);
 
-    final col = _userHistoryCol;
-    if (col != null) {
-      try {
-        await col.doc(entry.id).set(entry.toJson());
-      } catch (_) {}
-    }
+    try {
+      await col.doc(entry.id).set(entry.toJson()).timeout(const Duration(seconds: 8));
+    } catch (_) {}
   }
 
   Future<void> deleteHistoryEntry(String id) async {
     final prefs = await SharedPreferences.getInstance();
+
+    if (!AuthService.isFirebaseInitialized) {
+      final current = List<HistoryEntry>.from(
+        HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      )..removeWhere((e) => e.id == id);
+      final encoded = jsonEncode(current.map((e) => e.toJson()).toList());
+      await prefs.setString(_historyKey, encoded);
+      return;
+    }
+
+    final userKey = _historyCacheKey();
     final current = List<HistoryEntry>.from(
-      HistoryEntry.listFromJson(prefs.getString(_historyKey)),
+      HistoryEntry.listFromJson(prefs.getString(userKey)),
     )..removeWhere((e) => e.id == id);
 
     final encoded = jsonEncode(current.map((e) => e.toJson()).toList());
-    await prefs.setString(_historyKey, encoded);
+    await prefs.setString(userKey, encoded);
 
     final col = _userHistoryCol;
     if (col != null) {
       try {
-        await col.doc(id).delete();
+        await col.doc(id).delete().timeout(const Duration(seconds: 8));
       } catch (_) {}
     }
   }
 
   Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final current = List<HistoryEntry>.from(
-      HistoryEntry.listFromJson(prefs.getString(_historyKey)),
-    );
-    await prefs.remove(_historyKey);
+
+    if (!AuthService.isFirebaseInitialized) {
+      await prefs.remove(_historyKey);
+      return;
+    }
+
+    final userKey = _historyCacheKey();
+    await prefs.remove(userKey);
 
     final col = _userHistoryCol;
     if (col != null) {
       try {
-        for (final item in current) {
-          await col.doc(item.id).delete();
+        final snap = await col.get().timeout(const Duration(seconds: 8));
+        for (final doc in snap.docs) {
+          await doc.reference.delete();
         }
       } catch (_) {}
     }
   }
 
   // ------------------------------------------------------------------
-  // Plantillas / Presets
+  // Plantillas / Presets (aislados por cuenta en producción)
   // ------------------------------------------------------------------
   Future<List<Preset>> getPresets() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_presetsKey);
-    return Preset.listFromJson(raw);
+    if (!AuthService.isFirebaseInitialized) {
+      return Preset.listFromJson(prefs.getString(_presetsKey));
+    }
+    if (_currentUid == null || _currentUid!.isEmpty) {
+      return const [];
+    }
+    return Preset.listFromJson(prefs.getString(_presetsCacheKey()));
   }
 
   Future<void> savePreset(Preset preset) async {
     if (!preset.isValid) return;
     final prefs = await SharedPreferences.getInstance();
+    final key = AuthService.isFirebaseInitialized
+        ? _presetsCacheKey()
+        : _presetsKey;
     final current = List<Preset>.from(
-      Preset.listFromJson(prefs.getString(_presetsKey)),
+      Preset.listFromJson(prefs.getString(key)),
     );
 
     final existingIdx = current.indexWhere((p) => p.id == preset.id);
@@ -157,21 +212,27 @@ class HistoryService {
     }
 
     final encoded = jsonEncode(current.map((p) => p.toJson()).toList());
-    await prefs.setString(_presetsKey, encoded);
+    await prefs.setString(key, encoded);
   }
 
   Future<void> deletePreset(String id) async {
     final prefs = await SharedPreferences.getInstance();
+    final key = AuthService.isFirebaseInitialized
+        ? _presetsCacheKey()
+        : _presetsKey;
     final current = List<Preset>.from(
-      Preset.listFromJson(prefs.getString(_presetsKey)),
+      Preset.listFromJson(prefs.getString(key)),
     )..removeWhere((p) => p.id == id);
 
     final encoded = jsonEncode(current.map((p) => p.toJson()).toList());
-    await prefs.setString(_presetsKey, encoded);
+    await prefs.setString(key, encoded);
   }
 
   Future<void> clearPresets() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_presetsKey);
+    final key = AuthService.isFirebaseInitialized
+        ? _presetsCacheKey()
+        : _presetsKey;
+    await prefs.remove(key);
   }
 }

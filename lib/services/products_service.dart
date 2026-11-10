@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,9 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_item.dart';
 import 'auth_service.dart';
 
-/// Servicio de gestión del Catálogo de Productos con arquitectura Local-First
-/// (`SharedPreferences`) + sincronización automática en `Cloud Firestore`
-/// cuando el usuario ha iniciado sesión (`users/{uid}/products/{productId}`).
+/// Servicio de gestión del Catálogo de Productos con respaldo por cuenta
+/// en `Cloud Firestore` (`users/{uid}/products/{productId}`) y caché
+/// local aislada por usuario para funcionamiento sin conexión.
 class ProductsService {
   static const String _localKey = 'catalog_products_list';
 
@@ -23,59 +24,119 @@ class ProductsService {
     return db.collection('users').doc(uid).collection('products');
   }
 
-  /// Obtiene la lista de productos local y, si hay sesión activa, sincroniza con Firestore.
+  String _cacheKeyForUser() {
+    final uid = _currentUid;
+    return (uid != null && uid.isNotEmpty) ? '${_localKey}_$uid' : _localKey;
+  }
+
+  /// Obtiene la lista de productos. En entornos de prueba (sin Firebase inicializado),
+  /// usa la persistencia local. En producción, exige sesión de usuario y sincroniza
+  /// con Firestore (`users/{uid}/products`).
   Future<List<ProductItem>> getProducts({bool syncRemote = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    final localList = List<ProductItem>.from(
-      ProductItem.listFromJson(prefs.getString(_localKey)),
+
+    // 1. Entorno de pruebas / sin Firebase inicializado
+    if (!AuthService.isFirebaseInitialized) {
+      return List<ProductItem>.from(
+        ProductItem.listFromJson(prefs.getString(_localKey)),
+      );
+    }
+
+    // 2. Producción sin sesión activa: no mostrar productos de otras cuentas
+    final uid = _currentUid;
+    if (uid == null || uid.isEmpty) {
+      return const [];
+    }
+
+    final userKey = _cacheKeyForUser();
+    final cachedList = List<ProductItem>.from(
+      ProductItem.listFromJson(prefs.getString(userKey)),
     );
 
     final col = _userProductsCol;
     if (!syncRemote || col == null) {
-      return localList;
+      return cachedList;
     }
 
+    // 3. Sincronización con Cloud Firestore como fuente de verdad
     try {
-      final snap = await col.get();
-      final byId = <String, ProductItem>{
-        for (final p in localList) p.id: p,
-      };
+      final snap = await col
+          .get()
+          .timeout(const Duration(seconds: 8));
 
+      final remoteList = <ProductItem>[];
       for (final doc in snap.docs) {
-        final remoteProd = ProductItem.fromJson(doc.data());
-        if (remoteProd.isValid) {
-          final existing = byId[remoteProd.id];
-          if (existing == null ||
-              remoteProd.updatedAt.isAfter(existing.updatedAt)) {
-            byId[remoteProd.id] = remoteProd;
-          }
+        final item = ProductItem.fromJson(doc.data());
+        if (item.isValid) {
+          remoteList.add(item);
         }
       }
 
-      // Subir a la nube los productos locales que aún no estén en Firestore
-      final remoteIds = snap.docs.map((d) => d.id).toSet();
-      for (final localProd in localList) {
-        if (!remoteIds.contains(localProd.id)) {
-          await col.doc(localProd.id).set(localProd.toJson());
-        }
-      }
+      remoteList.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
 
-      final merged = byId.values.toList()
-        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      // Actualizar la caché local exclusiva de este usuario
+      await prefs.setString(
+        userKey,
+        jsonEncode(remoteList.map((p) => p.toJson()).toList()),
+      );
 
-      await _saveLocalList(prefs, merged);
-      return merged;
+      return remoteList;
     } catch (_) {
-      return localList;
+      // Si no hay conexión o falla la red, devolver la caché del usuario
+      return cachedList;
     }
   }
 
-  /// Guarda o actualiza un producto localmente y en Firestore (si hay sesión).
+  /// Guarda o actualiza un producto directamente en Firestore (`users/{uid}/products/{id}`)
+  /// y actualiza la caché local del usuario autenticado.
   Future<void> saveProduct(ProductItem product) async {
     if (!product.isValid) return;
+
     final prefs = await SharedPreferences.getInstance();
+
+    // Entorno de pruebas sin Firebase
+    if (!AuthService.isFirebaseInitialized) {
+      final current = List<ProductItem>.from(
+        ProductItem.listFromJson(prefs.getString(_localKey)),
+      );
+      final idx = current.indexWhere((p) => p.id == product.id);
+      if (idx >= 0) {
+        current[idx] = product;
+      } else {
+        current.insert(0, product);
+      }
+      await prefs.setString(
+        _localKey,
+        jsonEncode(current.map((p) => p.toJson()).toList()),
+      );
+      return;
+    }
+
+    final col = _userProductsCol;
+    final uid = _currentUid;
+    if (col == null || uid == null || uid.isEmpty) {
+      throw StateError(
+        'Debes iniciar sesión con tu cuenta de Google o correo para guardar productos en la nube.',
+      );
+    }
+
+    // Guarda en Cloud Firestore con verificación (no se traga excepciones)
+    await col
+        .doc(product.id)
+        .set(product.toJson())
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException(
+            'Tiempo de espera agotado al conectar con Firebase. Revisa tu conexión a internet.',
+          ),
+        );
+
+    // Actualiza la caché local del usuario
+    final userKey = _cacheKeyForUser();
     final current = List<ProductItem>.from(
-      ProductItem.listFromJson(prefs.getString(_localKey)),
+      ProductItem.listFromJson(prefs.getString(userKey)),
     );
 
     final idx = current.indexWhere((p) => p.id == product.id);
@@ -85,56 +146,89 @@ class ProductsService {
       current.insert(0, product);
     }
 
-    await _saveLocalList(prefs, current);
-
-    final col = _userProductsCol;
-    if (col != null) {
-      try {
-        await col.doc(product.id).set(product.toJson());
-      } catch (_) {}
-    }
+    await prefs.setString(
+      userKey,
+      jsonEncode(current.map((p) => p.toJson()).toList()),
+    );
   }
 
-  /// Elimina un producto por su [id] tanto localmente como en Firestore.
+  /// Transmite la lista de productos de Firestore en tiempo real cuando hay sesión.
+  Stream<List<ProductItem>> streamProducts() {
+    if (!AuthService.isFirebaseInitialized) {
+      return Stream.fromFuture(getProducts(syncRemote: false));
+    }
+
+    final col = _userProductsCol;
+    final uid = _currentUid;
+    if (col == null || uid == null || uid.isEmpty) {
+      return const Stream.empty();
+    }
+
+    final userKey = _cacheKeyForUser();
+    return col.orderBy('updatedAt', descending: true).snapshots().map((snap) {
+      final list = <ProductItem>[];
+      for (final doc in snap.docs) {
+        final p = ProductItem.fromJson(doc.data());
+        if (p.isValid) list.add(p);
+      }
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString(userKey, jsonEncode(list.map((p) => p.toJson()).toList()));
+      });
+      return list;
+    });
+  }
+
+  /// Elimina un producto por su [id] tanto en Firestore como en la caché local.
   Future<void> deleteProduct(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    final current = List<ProductItem>.from(
-      ProductItem.listFromJson(prefs.getString(_localKey)),
-    )..removeWhere((p) => p.id == id);
 
-    await _saveLocalList(prefs, current);
+    if (!AuthService.isFirebaseInitialized) {
+      final current = List<ProductItem>.from(
+        ProductItem.listFromJson(prefs.getString(_localKey)),
+      )..removeWhere((p) => p.id == id);
+      await prefs.setString(
+        _localKey,
+        jsonEncode(current.map((p) => p.toJson()).toList()),
+      );
+      return;
+    }
+
+    final userKey = _cacheKeyForUser();
+    final current = List<ProductItem>.from(
+      ProductItem.listFromJson(prefs.getString(userKey)),
+    )..removeWhere((p) => p.id == id);
+    await prefs.setString(
+      userKey,
+      jsonEncode(current.map((p) => p.toJson()).toList()),
+    );
 
     final col = _userProductsCol;
     if (col != null) {
-      try {
-        await col.doc(id).delete();
-      } catch (_) {}
+      await col
+          .doc(id)
+          .delete()
+          .timeout(const Duration(seconds: 8));
     }
   }
 
+  /// Limpia todos los productos del usuario actual.
   Future<void> clearAllProducts() async {
     final prefs = await SharedPreferences.getInstance();
-    final current = List<ProductItem>.from(
-      ProductItem.listFromJson(prefs.getString(_localKey)),
-    );
-    await prefs.remove(_localKey);
+    if (!AuthService.isFirebaseInitialized) {
+      await prefs.remove(_localKey);
+      return;
+    }
+
+    final userKey = _cacheKeyForUser();
+    await prefs.remove(userKey);
 
     final col = _userProductsCol;
     if (col != null) {
-      try {
-        for (final item in current) {
-          await col.doc(item.id).delete();
-        }
-      } catch (_) {}
+      final snap = await col.get().timeout(const Duration(seconds: 8));
+      for (final doc in snap.docs) {
+        await doc.reference.delete();
+      }
     }
   }
-
-  Future<void> _saveLocalList(
-    SharedPreferences prefs,
-    List<ProductItem> items,
-  ) async {
-    final encoded = jsonEncode(items.map((p) => p.toJson()).toList());
-    await prefs.setString(_localKey, encoded);
-  }
 }
-

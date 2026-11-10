@@ -6,6 +6,7 @@ import '../models/calculation_item.dart';
 import '../models/margin_mode.dart';
 import '../models/product_item.dart';
 import '../models/rate.dart';
+import '../services/auth_service.dart';
 import '../services/calculator.dart';
 import '../services/history_service.dart';
 import '../services/products_service.dart';
@@ -13,6 +14,7 @@ import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
 import '../utils/format.dart';
 import '../widgets/history_presets_sheet.dart';
+import 'auth_screen.dart';
 
 /// Pantalla principal: costo, tasa (4 tarjetas), margen, comisiones,
 /// gasto fijo → precio de venta con desglose paso a paso, calculadora
@@ -26,6 +28,7 @@ class CalculatorScreen extends StatefulWidget {
 
 class _CalculatorScreenState extends State<CalculatorScreen> {
   final _rates = RatesService();
+  final _authService = AuthService();
   final _historyService = HistoryService();
   final _productsService = ProductsService();
   final _profileService = SellerProfileService();
@@ -247,6 +250,45 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   }
 
   Future<void> _promptSavePreset(double roundedPriceBs) async {
+    if (AuthService.isFirebaseInitialized && !_authService.isSignedIn) {
+      final shouldLogin = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_upload_outlined, color: Colors.teal),
+              SizedBox(width: 8),
+              Expanded(child: Text('Cuenta requerida')),
+            ],
+          ),
+          content: const Text(
+            'Para que tus productos y plantillas se guarden en tu cuenta y aparezcan en la versión web (y viceversa), debes iniciar sesión con tu correo o Google.\n\n¿Deseas iniciar sesión ahora?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.login),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              label: const Text('Iniciar sesión'),
+            ),
+          ],
+        ),
+      );
+      if (shouldLogin == true && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AuthScreen()),
+        );
+        if (!mounted || !_authService.isSignedIn) return;
+      } else {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
     final nameCtrl = TextEditingController(
       text: 'Producto \$${fmtUsd(_costUsd)}',
     );
@@ -312,13 +354,27 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       updatedAt: now,
     );
 
-    await _historyService.savePreset(preset);
-    await _productsService.saveProduct(product);
-    await _recordCurrentToHistory(roundedPriceBs);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Producto "$confirmed" guardado en Plantillas y Catálogo')),
-    );
+    try {
+      await _historyService.savePreset(preset);
+      await _productsService.saveProduct(product);
+      await _recordCurrentToHistory(roundedPriceBs);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Producto "$confirmed" guardado en tu cuenta y catálogo',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red.shade800,
+          content: Text('Error al guardar en la nube: $e'),
+        ),
+      );
+    }
   }
 
   void _openHistoryPresetsSheet() {

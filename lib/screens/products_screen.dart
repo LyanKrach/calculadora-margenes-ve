@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -39,16 +41,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
   double _globalCustomRate = 0;
   RateSource? _overrideSource;
   bool _loading = true;
+  StreamSubscription<User?>? _authSub;
 
   @override
   void initState() {
     super.initState();
     _refreshAll();
     _searchCtrl.addListener(() => setState(() {}));
+    _authSub = _authService.authStateChanges.listen((_) {
+      if (mounted) _refreshAll();
+    });
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -160,7 +167,108 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
+  Widget _buildAccountBanner() {
+    final user = _authService.currentUser;
+    if (user != null) {
+      final email = user.isAnonymous
+          ? 'Invitado anónimo (no sincroniza con la web)'
+          : (user.email ?? 'Usuario');
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Theme.of(context)
+            .colorScheme
+            .primaryContainer
+            .withValues(alpha: 0.35),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_done,
+                size: 16, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Cuenta activa: $email · Sincronizado en la nube',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.amber.withValues(alpha: 0.18),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off, size: 16, color: Colors.amber),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Sin cuenta activa: inicia sesión para sincronizar con la web',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AuthScreen()),
+                );
+                _refreshAll();
+              },
+              child: const Text('Entrar'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   Future<void> _openProductForm({ProductItem? existing}) async {
+    if (AuthService.isFirebaseInitialized && !_authService.isSignedIn) {
+      final shouldLogin = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_upload_outlined, color: Colors.teal),
+              SizedBox(width: 8),
+              Expanded(child: Text('Cuenta requerida')),
+            ],
+          ),
+          content: const Text(
+            'Para que tus productos se guarden en tu cuenta y aparezcan en la versión web (y viceversa), debes iniciar sesión con tu correo o Google.\n\n¿Deseas iniciar sesión ahora?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.login),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              label: const Text('Iniciar sesión'),
+            ),
+          ],
+        ),
+      );
+      if (shouldLogin == true && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AuthScreen()),
+        );
+        if (!mounted) return;
+        await _refreshAll();
+        if (!_authService.isSignedIn) return;
+      } else {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
     final saved = await showModalBottomSheet<ProductItem>(
       context: context,
       isScrollControlled: true,
@@ -170,30 +278,47 @@ class _ProductsScreenState extends State<ProductsScreen> {
       ),
     );
     if (saved != null) {
-      await _productsService.saveProduct(saved);
-      final list = await _productsService.getProducts(syncRemote: false);
-      if (!mounted) return;
-      setState(() => _products = list);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            existing == null
-                ? 'Producto "${saved.name}" guardado'
-                : 'Producto "${saved.name}" actualizado',
+      try {
+        await _productsService.saveProduct(saved);
+        final list = await _productsService.getProducts(syncRemote: true);
+        if (!mounted) return;
+        setState(() => _products = list);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              existing == null
+                  ? 'Producto "${saved.name}" guardado en la nube'
+                  : 'Producto "${saved.name}" actualizado en la nube',
+            ),
           ),
-        ),
-      );
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red.shade800,
+            content: Text('Error al guardar en la nube: $e'),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _deleteProduct(ProductItem item) async {
-    await _productsService.deleteProduct(item.id);
-    final list = await _productsService.getProducts(syncRemote: false);
-    if (!mounted) return;
-    setState(() => _products = list);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Producto "${item.name}" eliminado')),
-    );
+    try {
+      await _productsService.deleteProduct(item.id);
+      final list = await _productsService.getProducts(syncRemote: true);
+      if (!mounted) return;
+      setState(() => _products = list);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Producto "${item.name}" eliminado de la nube')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar: $e')),
+      );
+    }
   }
 
   @override
@@ -267,6 +392,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     return Column(
       children: [
+        _buildAccountBanner(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Column(
@@ -325,11 +451,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      _products.isEmpty
-                          ? 'Aún no tienes productos guardados.\n'
-                              'Toca "Agregar producto" abajo para guardar tus productos '
-                              'y ver su precio en bolívares al instante todos los días.'
-                          : 'No se encontraron productos que coincidan con "$query".',
+                      (AuthService.isFirebaseInitialized && !_authService.isSignedIn)
+                          ? 'Inicia sesión con tu cuenta de Google o correo\n'
+                              'para guardar y ver tus productos sincronizados\n'
+                              'entre tu teléfono y la web.'
+                          : _products.isEmpty
+                              ? 'Aún no tienes productos guardados en esta cuenta.\n'
+                                  'Toca "Agregar producto" abajo para guardar tus productos '
+                                  'y ver su precio en bolívares al instante todos los días.'
+                              : 'No se encontraron productos que coincidan con "$query".',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.grey),
                     ),
@@ -467,21 +597,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final fmt = DateFormat('dd/MM/yyyy HH:mm', 'es_VE');
 
     if (_history.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Aún no hay productos calculados en el historial.\n'
-            'Cada vez que copies un precio o compartas por WhatsApp desde la Calculadora o desde tu Catálogo, quedará registrado aquí.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+      return Column(
+        children: [
+          _buildAccountBanner(),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Aún no hay productos calculados en el historial.\n'
+                  'Cada vez que copies un precio o compartas por WhatsApp desde la Calculadora o desde tu Catálogo, quedará registrado aquí.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
 
     return Column(
       children: [
+        _buildAccountBanner(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(

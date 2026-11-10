@@ -376,7 +376,9 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Sesión cerrada. Tus datos locales siguen disponibles en este teléfono.'),
+        content: Text(
+          'Sesión cerrada. Inicia sesión para ver y sincronizar tus productos.',
+        ),
       ),
     );
   }
@@ -527,11 +529,11 @@ class _AuthScreenState extends State<AuthScreen> {
         const Card(
           child: ListTile(
             leading: Icon(Icons.cloud_done_outlined),
-            title: Text('Respalda tus productos y precios en la nube'),
+            title: Text('Productos y cálculos por cuenta en la nube'),
             subtitle: Text(
-              'Inicia sesión o crea una cuenta para respaldar tu catálogo de productos '
-              'y tu historial de cálculos en Firebase Firestore. Si prefieres no usar cuenta, '
-              'todo sigue funcionando localmente en tu dispositivo.',
+              'Inicia sesión con tu correo o cuenta de Google para guardar tus '
+              'productos e historial directamente en tu cuenta y sincronizarlos '
+              'entre la app y la versión web.',
             ),
           ),
         ),
@@ -617,7 +619,7 @@ class _AuthScreenState extends State<AuthScreen> {
           OutlinedButton.icon(
             onPressed: _signInAnonymous,
             icon: const Icon(Icons.person_outline),
-            label: const Text('Activar respaldo rápido como Invitado'),
+            label: const Text('Modo invitado (solo en este teléfono)'),
           ),
         ],
       ],
