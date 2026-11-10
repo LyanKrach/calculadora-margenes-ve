@@ -22,6 +22,7 @@ class Rate {
     required this.value,
     required this.fetchedAt,
     this.isCached = false,
+    this.effectiveDate,
   });
 
   final RateSource source;
@@ -31,10 +32,14 @@ class Rate {
   /// true cuando el valor viene de la caché offline (no de la red).
   final bool isCached;
 
+  /// Fecha de vigencia oficial (ej. "2026-11-10" o "2026-11-11").
+  final String? effectiveDate;
+
   Map<String, dynamic> toJson() => {
         'source': source.name,
         'value': value,
         'fetchedAt': fetchedAt.toIso8601String(),
+        if (effectiveDate != null) 'effectiveDate': effectiveDate,
       };
 
   factory Rate.fromJson(Map<String, dynamic> json) {
@@ -46,6 +51,7 @@ class Rate {
       value: (json['value'] as num).toDouble(),
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
       isCached: true,
+      effectiveDate: json['effectiveDate'] as String?,
     );
   }
 }

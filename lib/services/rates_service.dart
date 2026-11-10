@@ -32,7 +32,12 @@ class RatesService {
 
   static const _timeout = Duration(seconds: 10);
 
-  // Endpoints verificados 2026-11-09.
+  // Endpoints verificados:
+  // 1. BCV Today: JSON público sin clave, actualiza con la fecha de vigencia oficial del BCV.
+  static const _bcvTodayRate = 'https://bcv.today/api/v1/rate.json';
+  // 2. Directo BCV: HTML oficial del BCV (nativo sin CORS).
+  static const _bcvDirectUrl = 'https://www.bcv.org.ve/';
+  // 3. DolarApi (respaldo):
   static const _dolarApiUsd = 'https://ve.dolarapi.com/v1/dolares/oficial';
   static const _dolarApiEur = 'https://ve.dolarapi.com/v1/euros/oficial';
   static const _dolarApiParallel = 'https://ve.dolarapi.com/v1/dolares/paralelo';
@@ -53,54 +58,215 @@ class RatesService {
   static const double fallbackEuroBcv = 1006.61;
   static const double fallbackBinanceUsdt = 1082.50;
 
-  // ------------------------------------------------------------------
-  // BCV dólar — DolarApi, campo `promedio`.
-  // ------------------------------------------------------------------
-  Future<Rate> fetchBcvUsd() async {
+  Map<String, dynamic>? _lastBcvTodayData;
+  DateTime? _lastBcvTodayFetchTime;
+
+  Future<Map<String, dynamic>?> _fetchBcvToday() async {
+    if (_lastBcvTodayData != null &&
+        _lastBcvTodayFetchTime != null &&
+        DateTime.now().difference(_lastBcvTodayFetchTime!) <
+            const Duration(seconds: 15)) {
+      return _lastBcvTodayData;
+    }
     try {
-      final res = await _client
-          .get(Uri.parse(_dolarApiUsd))
-          .timeout(_timeout);
+      final res =
+          await _client.get(Uri.parse(_bcvTodayRate)).timeout(_timeout);
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        final raw = (json['promedio'] as num).toDouble();
+        _lastBcvTodayData = json;
+        _lastBcvTodayFetchTime = DateTime.now();
+        return json;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<_BcvDirectData?> _fetchDirectBcv() async {
+    try {
+      final res = await _client
+          .get(
+            Uri.parse(_bcvDirectUrl),
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept':
+                  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          )
+          .timeout(_timeout);
+      if (res.statusCode == 200) {
+        final html = res.body;
+
+        final usdMatch = RegExp(
+          r'id=["\x27]dolar["\x27][\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>',
+          caseSensitive: false,
+        ).firstMatch(html);
+        double? usd;
+        if (usdMatch != null) {
+          final clean = usdMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
+          usd = double.tryParse(clean);
+        }
+
+        final eurMatch = RegExp(
+          r'id=["\x27]euro["\x27][\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>',
+          caseSensitive: false,
+        ).firstMatch(html);
+        double? eur;
+        if (eurMatch != null) {
+          final clean = eurMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
+          eur = double.tryParse(clean);
+        }
+
+        final dateMatch = RegExp(
+          r'content=["\x27](\d{4}-\d{2}-\d{2})T',
+          caseSensitive: false,
+        ).firstMatch(html);
+        final effDate = dateMatch?.group(1);
+
+        if (usd != null || eur != null) {
+          return _BcvDirectData(usd: usd, eur: eur, effectiveDate: effDate);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // ------------------------------------------------------------------
+  // BCV dólar:
+  // 1. BCV Today (rápido, vigencia oficial, sin clave)
+  // 2. Directo BCV (página web oficial en nativo sin CORS)
+  // 3. DolarApi oficial (respaldo)
+  // 4. Caché offline / Fallback
+  // ------------------------------------------------------------------
+  Future<Rate> fetchBcvUsd() async {
+    // 1. BCV Today
+    try {
+      final bcvToday = await _fetchBcvToday();
+      if (bcvToday != null && bcvToday['USD'] is num) {
+        final raw = (bcvToday['USD'] as num).toDouble();
         final value = double.parse(raw.toStringAsFixed(2));
+        final effDate = bcvToday['effective_date']?.toString();
         final rate = Rate(
           source: RateSource.bcvUsd,
           value: value,
           fetchedAt: DateTime.now(),
-        );
-        await _saveToCache(rate);
-        return rate;
-      }
-    } catch (_) {
-      // Cae al caché / valor de respaldo.
-    }
-    return _cachedOrFallback(RateSource.bcvUsd, fallbackBcvUsd);
-  }
-
-  // ------------------------------------------------------------------
-  // Euro BCV — DolarApi, campo `promedio`.
-  // ------------------------------------------------------------------
-  Future<Rate> fetchEuroBcv() async {
-    try {
-      final res = await _client
-          .get(Uri.parse(_dolarApiEur))
-          .timeout(_timeout);
-      if (res.statusCode == 200) {
-        final json = jsonDecode(res.body) as Map<String, dynamic>;
-        final raw = (json['promedio'] as num).toDouble();
-        final value = double.parse(raw.toStringAsFixed(2));
-        final rate = Rate(
-          source: RateSource.euroBcv,
-          value: value,
-          fetchedAt: DateTime.now(),
+          effectiveDate: effDate,
         );
         await _saveToCache(rate);
         return rate;
       }
     } catch (_) {}
-    return _cachedOrFallback(RateSource.euroBcv, fallbackEuroBcv);
+
+    // 2. Directo BCV
+    try {
+      final direct = await _fetchDirectBcv();
+      if (direct != null && direct.usd != null && direct.usd! > 0) {
+        final value = double.parse(direct.usd!.toStringAsFixed(2));
+        final rate = Rate(
+          source: RateSource.bcvUsd,
+          value: value,
+          fetchedAt: DateTime.now(),
+          effectiveDate: direct.effectiveDate,
+        );
+        await _saveToCache(rate);
+        return rate;
+      }
+    } catch (_) {}
+
+    // 3. DolarApi (respaldo)
+    try {
+      final res =
+          await _client.get(Uri.parse(_dolarApiUsd)).timeout(_timeout);
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body) as Map<String, dynamic>;
+        final raw = (json['promedio'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
+        final fechaStr = json['fechaActualizacion']?.toString();
+        String? effDate;
+        if (fechaStr != null && fechaStr.length >= 10) {
+          effDate = fechaStr.substring(0, 10);
+        }
+        final rate = Rate(
+          source: RateSource.bcvUsd,
+          value: value,
+          fetchedAt: DateTime.now(),
+          effectiveDate: effDate,
+        );
+        await _saveToCache(rate);
+        return rate;
+      }
+    } catch (_) {}
+
+    return _cachedOrFallback(RateSource.bcvUsd, fallbackBcvUsd, '2026-11-10');
+  }
+
+  // ------------------------------------------------------------------
+  // Euro BCV:
+  // 1. BCV Today (rápido, vigencia oficial, sin clave)
+  // 2. Directo BCV (página web oficial en nativo sin CORS)
+  // 3. DolarApi euros oficial (respaldo)
+  // 4. Caché offline / Fallback
+  // ------------------------------------------------------------------
+  Future<Rate> fetchEuroBcv() async {
+    // 1. BCV Today
+    try {
+      final bcvToday = await _fetchBcvToday();
+      if (bcvToday != null && bcvToday['EUR'] is num) {
+        final raw = (bcvToday['EUR'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
+        final effDate = bcvToday['effective_date']?.toString();
+        final rate = Rate(
+          source: RateSource.euroBcv,
+          value: value,
+          fetchedAt: DateTime.now(),
+          effectiveDate: effDate,
+        );
+        await _saveToCache(rate);
+        return rate;
+      }
+    } catch (_) {}
+
+    // 2. Directo BCV
+    try {
+      final direct = await _fetchDirectBcv();
+      if (direct != null && direct.eur != null && direct.eur! > 0) {
+        final value = double.parse(direct.eur!.toStringAsFixed(2));
+        final rate = Rate(
+          source: RateSource.euroBcv,
+          value: value,
+          fetchedAt: DateTime.now(),
+          effectiveDate: direct.effectiveDate,
+        );
+        await _saveToCache(rate);
+        return rate;
+      }
+    } catch (_) {}
+
+    // 3. DolarApi euros oficial (respaldo)
+    try {
+      final res =
+          await _client.get(Uri.parse(_dolarApiEur)).timeout(_timeout);
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body) as Map<String, dynamic>;
+        final raw = (json['promedio'] as num).toDouble();
+        final value = double.parse(raw.toStringAsFixed(2));
+        final fechaStr = json['fechaActualizacion']?.toString();
+        String? effDate;
+        if (fechaStr != null && fechaStr.length >= 10) {
+          effDate = fechaStr.substring(0, 10);
+        }
+        final rate = Rate(
+          source: RateSource.euroBcv,
+          value: value,
+          fetchedAt: DateTime.now(),
+          effectiveDate: effDate,
+        );
+        await _saveToCache(rate);
+        return rate;
+      }
+    } catch (_) {}
+
+    return _cachedOrFallback(RateSource.euroBcv, fallbackEuroBcv, '2026-11-10');
   }
 
   // ------------------------------------------------------------------
@@ -276,7 +442,8 @@ class RatesService {
     );
   }
 
-  Future<Rate> _cachedOrFallback(RateSource source, double fallback) async {
+  Future<Rate> _cachedOrFallback(RateSource source, double fallback,
+      [String? fallbackDate]) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_cachePrefix${source.name}');
     if (raw != null) {
@@ -290,6 +457,14 @@ class RatesService {
       value: fallback,
       fetchedAt: DateTime.now(),
       isCached: true,
+      effectiveDate: fallbackDate,
     );
   }
+}
+
+class _BcvDirectData {
+  const _BcvDirectData({this.usd, this.eur, this.effectiveDate});
+  final double? usd;
+  final double? eur;
+  final String? effectiveDate;
 }

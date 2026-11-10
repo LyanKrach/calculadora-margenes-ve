@@ -76,6 +76,7 @@ class _RatesScreenState extends State<RatesScreen> {
                         title: Text(source.label),
                         subtitle: Text(
                           '${_sourceDetail(source)}\n'
+                          '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
                           'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
                         ),
                         trailing: Text(

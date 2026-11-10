@@ -804,12 +804,20 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Widget _rateCard(RateSource source) {
     final rate = _ratesMap[source];
     final selected = _selectedSource == source;
-    final subtitle = source == RateSource.custom
-        ? 'La escribes tú, sin internet'
-        : rate == null
-            ? 'Sin datos'
-            : '${fmtRate(rate.value)} ${source.unit}'
-                '${rate.isCached ? ' · guardada' : ''}';
+    final String subtitle;
+    if (source == RateSource.custom) {
+      subtitle = 'La escribes tú, sin internet';
+    } else if (rate == null) {
+      subtitle = 'Sin datos';
+    } else {
+      final cachedSuffix = rate.isCached ? ' · guardada' : '';
+      final effDateStr = (source == RateSource.bcvUsd || source == RateSource.euroBcv) &&
+              rate.effectiveDate != null &&
+              rate.effectiveDate!.isNotEmpty
+          ? ' · ${formatEffectiveDate(rate.effectiveDate)}'
+          : '';
+      subtitle = '${fmtRate(rate.value)} ${source.unit}$cachedSuffix$effDateStr';
+    }
     return Card(
       color: selected ? Theme.of(context).colorScheme.primaryContainer : null,
       child: ListTile(
