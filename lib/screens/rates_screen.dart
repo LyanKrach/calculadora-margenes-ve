@@ -38,10 +38,10 @@ class _RatesScreenState extends State<RatesScreen> {
 
   String _sourceDetail(RateSource s) {
     return switch (s) {
-      RateSource.bcvUsd => 'DolarApi · ve.dolarapi.com/v1/dolares/oficial · campo promedio',
-      RateSource.binanceUsdt => 'Binance P2P · mediana de 10 anuncios (VES/USDT, BUY) · respaldo: quote-price y DolarApi paralelo',
-      RateSource.euroBcv => 'DolarApi · ve.dolarapi.com/v1/euros/oficial · campo promedio',
-      RateSource.custom => 'Manual: la escribes tú en la calculadora',
+      RateSource.bcvUsd => 'Tasa oficial Banco Central de Venezuela',
+      RateSource.binanceUsdt => 'Mercado P2P en bolívares (referencia USDT)',
+      RateSource.euroBcv => 'Tasa oficial Banco Central de Venezuela (Euro)',
+      RateSource.custom => 'Tasa manual',
     };
   }
 
@@ -110,20 +110,12 @@ class _RatesScreenState extends State<RatesScreen> {
                   const Card(
                     child: ListTile(
                       leading: Icon(Icons.info_outline),
-                      title: Text('Sin conexión'),
+                      title: Text('Modo sin conexión'),
                       subtitle: Text(
                         'Si no hay internet, la app muestra la última tasa guardada '
-                        'con su fecha, marcada como "guardada". '
-                        'Nunca inventa una tasa: si no hay red ni caché, usa el '
-                        'último valor verificado (BCV 897,5383 · Binance 1045,00 · Euro 1001,186, del 2026-11-09).',
+                        'con su fecha y hora.',
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Valores de referencia del 2026-11-09: BCV dólar 897,5383 Bs/\$ · '
-                    'Binance USDT P2P mediana 1045,00 Bs/USDT · Euro BCV 1001,186 Bs/€.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
               ),
