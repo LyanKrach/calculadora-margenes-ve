@@ -1,46 +1,54 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/rate.dart';
 import '../models/rate_snapshot.dart';
+import 'bcv_http_client_stub.dart'
+    if (dart.library.io) 'bcv_http_client_io.dart';
 import 'calculator.dart';
 
 /// Servicio de tasas: BCV dólar, Binance USDT P2P, Euro BCV y personalizada.
 ///
 /// EN APP NATIVA NO HAY BLOQUEO CORS: ese bloqueo solo afecta a la web.
-/// Por eso Binance se consulta directo desde la app con POST a
-/// p2p.binance.com; en la versión web ese mismo endpoint es bloqueado
-/// por el navegador (sin Access-Control-Allow-Origin).
+/// Por eso la app puede consultar `www.bcv.org.ve` directamente (usando el
+/// certificado intermedio de Sectigo DV R36 sin desactivar SSL) además de la
+/// fuente rápida compartida `rates.dolarvzla.com/bcv/current.json`.
 ///
-/// Cadena de respaldo (fallback) por tasa:
-/// - BCV dólar: DolarApi oficial → DolarApi paralelo NO se usa como
-///   respaldo del BCV (es otra tasa); si falla, se usa la caché.
-/// - Binance USDT: P2P adv/search (mediana) → quote-price de Binance
-///   (1043,50 verificado el 2026-11-09) → DolarApi paralelo → caché.
-/// - Euro BCV: DolarApi euros oficial → caché.
-/// - Personalizada: nunca toca la red; la escribe el usuario.
+/// Cadena de respaldo (fallback) por tasa BCV (Dólar y Euro):
+/// 1. Directo BCV (`www.bcv.org.ve`, solo nativo) y DolarVZLA CDN JSON
+///    (`rates.dolarvzla.com/bcv/current.json`, multiplataforma, sin clave, CORS *).
+///    Si ambos responden, se toma el de fecha de vigencia más reciente.
+/// 2. BCV Today (`bcv.today/api/v1/rate.json`, respaldo rápido sin clave).
+/// 3. DolarApi oficial (`ve.dolarapi.com/v1/dolares/oficial` y `euros/oficial`).
+/// 4. Caché offline / Valores fallback.
 ///
-/// Caché offline: última tasa + fecha en SharedPreferences, por fuente.
-/// Sin conexión se muestra la última tasa guardada con su fecha y la
-/// etiqueta "sin conexión — valor guardado".
+/// Cadena Binance USDT y Personalizada: intacta (sin cambios).
 class RatesService {
-  RatesService({http.Client? client}) : _client = client ?? http.Client();
+  RatesService({http.Client? client})
+      : _hasCustomClient = client != null,
+        _client = client ?? http.Client();
 
+  final bool _hasCustomClient;
   final http.Client _client;
 
   static const _timeout = Duration(seconds: 10);
+  static const _bcvDirectTimeout = Duration(seconds: 4);
 
-  // Endpoints verificados:
-  // 1. BCV Today: JSON público sin clave, actualiza con la fecha de vigencia oficial del BCV.
-  static const _bcvTodayRate = 'https://bcv.today/api/v1/rate.json';
-  // 2. Directo BCV: HTML oficial del BCV (nativo sin CORS).
+  // Fuentes BCV (USD y EUR):
+  static const _dolarVzlaCurrent =
+      'https://rates.dolarvzla.com/bcv/current.json';
   static const _bcvDirectUrl = 'https://www.bcv.org.ve/';
-  // 3. DolarApi (respaldo):
+  static const _bcvTodayRate = 'https://bcv.today/api/v1/rate.json';
+
+  // Respaldo DolarApi y paralelo/Binance:
   static const _dolarApiUsd = 'https://ve.dolarapi.com/v1/dolares/oficial';
   static const _dolarApiEur = 'https://ve.dolarapi.com/v1/euros/oficial';
-  static const _dolarApiParallel = 'https://ve.dolarapi.com/v1/dolares/paralelo';
+  static const _dolarApiParallel =
+      'https://ve.dolarapi.com/v1/dolares/paralelo';
   static const _binanceP2p =
       'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
   static const _binanceQuote =
@@ -52,48 +60,139 @@ class RatesService {
   static const _snapshotsKey = 'rate_snapshots_history';
   static const int maxSnapshots = 10;
 
-  // Valores reales observados el 2026-11-09 (último recurso si no hay
-  // red ni caché: la app nunca arranca sin una tasa que mostrar).
+  // Valores de último recurso cuando no hay red ni caché previa.
   static const double fallbackBcvUsd = 899.27;
   static const double fallbackEuroBcv = 1006.61;
   static const double fallbackBinanceUsdt = 1082.50;
 
-  Map<String, dynamic>? _lastBcvTodayData;
-  DateTime? _lastBcvTodayFetchTime;
+  _BcvPairData? _lastBcvPairData;
+  DateTime? _lastBcvPairFetchTime;
+  Future<_BcvPairData?>? _inFlightBcvFuture;
 
-  Future<Map<String, dynamic>?> _fetchBcvToday() async {
-    if (_lastBcvTodayData != null &&
-        _lastBcvTodayFetchTime != null &&
-        DateTime.now().difference(_lastBcvTodayFetchTime!) <
+  Future<_BcvPairData?> _resolvePrimaryBcvPair() async {
+    if (_lastBcvPairData != null &&
+        _lastBcvPairFetchTime != null &&
+        DateTime.now().difference(_lastBcvPairFetchTime!) <
             const Duration(seconds: 15)) {
-      return _lastBcvTodayData;
+      return _lastBcvPairData;
     }
+    if (_inFlightBcvFuture != null) {
+      return _inFlightBcvFuture;
+    }
+
+    final future = _fetchPrimaryBcvInternal();
+    _inFlightBcvFuture = future;
+    try {
+      final result = await future;
+      if (result != null) {
+        _lastBcvPairData = result;
+        _lastBcvPairFetchTime = DateTime.now();
+      }
+      return result;
+    } finally {
+      _inFlightBcvFuture = null;
+    }
+  }
+
+  Future<_BcvPairData?> _fetchPrimaryBcvInternal() async {
+    final vzlaFuture = _fetchDolarVzla();
+    final directFuture = !kIsWeb ? _fetchDirectBcv() : Future<_BcvPairData?>.value(null);
+
+    _BcvPairData? vzla;
+    _BcvPairData? direct;
+
+    if (kIsWeb) {
+      vzla = await vzlaFuture;
+    } else {
+      // Consultar en paralelo sin bloquear más de 1.2s si DolarVZLA ya respondió
+      // (p. ej. si www.bcv.org.ve está bloqueado fuera de Venezuela).
+      vzla = await vzlaFuture;
+      if (vzla != null) {
+        try {
+          direct = await directFuture.timeout(
+            const Duration(milliseconds: 1200),
+            onTimeout: () => null,
+          );
+        } catch (_) {
+          direct = null;
+        }
+      } else {
+        direct = await directFuture;
+      }
+    }
+
+    final chosen = _pickFresherBcv(direct: direct, cdn: vzla);
+    if (chosen != null) return chosen;
+
+    // Respaldo rápido secundario antes de DolarApi: BCV Today
+    return await _fetchBcvToday();
+  }
+
+  _BcvPairData? _pickFresherBcv({_BcvPairData? direct, _BcvPairData? cdn}) {
+    if (direct == null) return cdn;
+    if (cdn == null) return direct;
+    final dDate = direct.effectiveDate ?? '';
+    final cDate = cdn.effectiveDate ?? '';
+    if (cDate.compareTo(dDate) > 0) {
+      return cdn;
+    }
+    return direct;
+  }
+
+  Future<_BcvPairData?> _fetchDolarVzla() async {
     try {
       final res =
-          await _client.get(Uri.parse(_bcvTodayRate)).timeout(_timeout);
+          await _client.get(Uri.parse(_dolarVzlaCurrent)).timeout(_timeout);
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        _lastBcvTodayData = json;
-        _lastBcvTodayFetchTime = DateTime.now();
-        return json;
+        final current = json['current'] as Map<String, dynamic>?;
+        if (current != null) {
+          final usd = (current['usd'] as num?)?.toDouble();
+          final eur = (current['eur'] as num?)?.toDouble();
+          final dateStr = current['date']?.toString();
+          if ((usd != null && usd > 0) || (eur != null && eur > 0)) {
+            return _BcvPairData(usd: usd, eur: eur, effectiveDate: dateStr);
+          }
+        }
       }
     } catch (_) {}
     return null;
   }
 
-  Future<_BcvDirectData?> _fetchDirectBcv() async {
+  Future<_BcvPairData?> _fetchBcvToday() async {
     try {
-      final res = await _client
+      final res =
+          await _client.get(Uri.parse(_bcvTodayRate)).timeout(_timeout);
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body) as Map<String, dynamic>;
+        final usd = (json['USD'] as num?)?.toDouble();
+        final eur = (json['EUR'] as num?)?.toDouble();
+        final effDate =
+            (json['effective_date'] ?? json['date'])?.toString();
+        if ((usd != null && usd > 0) || (eur != null && eur > 0)) {
+          return _BcvPairData(usd: usd, eur: eur, effectiveDate: effDate);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<_BcvPairData?> _fetchDirectBcv() async {
+    if (kIsWeb) return null;
+    final http.Client bcvClient =
+        _hasCustomClient ? _client : createBcvDirectHttpClient();
+    try {
+      final res = await bcvClient
           .get(
             Uri.parse(_bcvDirectUrl),
-            headers: {
+            headers: const {
               'User-Agent':
                   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept':
                   'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             },
           )
-          .timeout(_timeout);
+          .timeout(_bcvDirectTimeout);
       if (res.statusCode == 200) {
         final html = res.body;
 
@@ -103,7 +202,8 @@ class RatesService {
         ).firstMatch(html);
         double? usd;
         if (usdMatch != null) {
-          final clean = usdMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
+          final clean =
+              usdMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
           usd = double.tryParse(clean);
         }
 
@@ -113,7 +213,8 @@ class RatesService {
         ).firstMatch(html);
         double? eur;
         if (eurMatch != null) {
-          final clean = eurMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
+          final clean =
+              eurMatch.group(1)!.replaceAll('.', '').replaceAll(',', '.');
           eur = double.tryParse(clean);
         }
 
@@ -123,57 +224,43 @@ class RatesService {
         ).firstMatch(html);
         final effDate = dateMatch?.group(1);
 
-        if (usd != null || eur != null) {
-          return _BcvDirectData(usd: usd, eur: eur, effectiveDate: effDate);
+        if ((usd != null && usd > 0) || (eur != null && eur > 0)) {
+          return _BcvPairData(usd: usd, eur: eur, effectiveDate: effDate);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (!_hasCustomClient) {
+        bcvClient.close();
+      }
+    }
     return null;
   }
 
   // ------------------------------------------------------------------
   // BCV dólar:
-  // 1. BCV Today (rápido, vigencia oficial, sin clave)
-  // 2. Directo BCV (página web oficial en nativo sin CORS)
+  // 1. Directo BCV (nativo) + DolarVZLA CDN JSON (principal rápido sin clave)
+  // 2. BCV Today (respaldo rápido)
   // 3. DolarApi oficial (respaldo)
   // 4. Caché offline / Fallback
   // ------------------------------------------------------------------
   Future<Rate> fetchBcvUsd() async {
-    // 1. BCV Today
     try {
-      final bcvToday = await _fetchBcvToday();
-      if (bcvToday != null && bcvToday['USD'] is num) {
-        final raw = (bcvToday['USD'] as num).toDouble();
-        final value = double.parse(raw.toStringAsFixed(2));
-        final effDate = bcvToday['effective_date']?.toString();
+      final pair = await _resolvePrimaryBcvPair();
+      if (pair != null && pair.usd != null && pair.usd! > 0) {
+        final value = double.parse(pair.usd!.toStringAsFixed(2));
         final rate = Rate(
           source: RateSource.bcvUsd,
           value: value,
           fetchedAt: DateTime.now(),
-          effectiveDate: effDate,
+          effectiveDate: pair.effectiveDate,
         );
         await _saveToCache(rate);
         return rate;
       }
     } catch (_) {}
 
-    // 2. Directo BCV
-    try {
-      final direct = await _fetchDirectBcv();
-      if (direct != null && direct.usd != null && direct.usd! > 0) {
-        final value = double.parse(direct.usd!.toStringAsFixed(2));
-        final rate = Rate(
-          source: RateSource.bcvUsd,
-          value: value,
-          fetchedAt: DateTime.now(),
-          effectiveDate: direct.effectiveDate,
-        );
-        await _saveToCache(rate);
-        return rate;
-      }
-    } catch (_) {}
-
-    // 3. DolarApi (respaldo)
+    // Respaldo DolarApi oficial
     try {
       final res =
           await _client.get(Uri.parse(_dolarApiUsd)).timeout(_timeout);
@@ -201,48 +288,25 @@ class RatesService {
   }
 
   // ------------------------------------------------------------------
-  // Euro BCV:
-  // 1. BCV Today (rápido, vigencia oficial, sin clave)
-  // 2. Directo BCV (página web oficial en nativo sin CORS)
-  // 3. DolarApi euros oficial (respaldo)
-  // 4. Caché offline / Fallback
+  // Euro BCV (misma fuente rápida + respaldo DolarApi):
   // ------------------------------------------------------------------
   Future<Rate> fetchEuroBcv() async {
-    // 1. BCV Today
     try {
-      final bcvToday = await _fetchBcvToday();
-      if (bcvToday != null && bcvToday['EUR'] is num) {
-        final raw = (bcvToday['EUR'] as num).toDouble();
-        final value = double.parse(raw.toStringAsFixed(2));
-        final effDate = bcvToday['effective_date']?.toString();
+      final pair = await _resolvePrimaryBcvPair();
+      if (pair != null && pair.eur != null && pair.eur! > 0) {
+        final value = double.parse(pair.eur!.toStringAsFixed(2));
         final rate = Rate(
           source: RateSource.euroBcv,
           value: value,
           fetchedAt: DateTime.now(),
-          effectiveDate: effDate,
+          effectiveDate: pair.effectiveDate,
         );
         await _saveToCache(rate);
         return rate;
       }
     } catch (_) {}
 
-    // 2. Directo BCV
-    try {
-      final direct = await _fetchDirectBcv();
-      if (direct != null && direct.eur != null && direct.eur! > 0) {
-        final value = double.parse(direct.eur!.toStringAsFixed(2));
-        final rate = Rate(
-          source: RateSource.euroBcv,
-          value: value,
-          fetchedAt: DateTime.now(),
-          effectiveDate: direct.effectiveDate,
-        );
-        await _saveToCache(rate);
-        return rate;
-      }
-    } catch (_) {}
-
-    // 3. DolarApi euros oficial (respaldo)
+    // Respaldo DolarApi euros oficial
     try {
       final res =
           await _client.get(Uri.parse(_dolarApiEur)).timeout(_timeout);
@@ -462,8 +526,8 @@ class RatesService {
   }
 }
 
-class _BcvDirectData {
-  const _BcvDirectData({this.usd, this.eur, this.effectiveDate});
+class _BcvPairData {
+  const _BcvPairData({this.usd, this.eur, this.effectiveDate});
   final double? usd;
   final double? eur;
   final String? effectiveDate;
