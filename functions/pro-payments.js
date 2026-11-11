@@ -1,7 +1,15 @@
 'use strict';
 
 const crypto = require('crypto');
-const { verifyPayment, getExchangeRate, normalizeReference } = require('./pabilo');
+const {
+  verifyPayment,
+  getExchangeRate,
+  normalizeReference,
+  getCaracasDateString,
+  createPaymentLink,
+  getPaymentLinkInfo,
+  verifyWebhookSignature,
+} = require('./pabilo');
 
 const PRO_PLANS = Object.freeze({
   monthly: Object.freeze({
@@ -236,6 +244,9 @@ async function loadPublicPaymentConfig({ db, env = process.env, runtimeSecrets =
       '',
   ).trim();
   const baseUrl = String(runtimeSecrets.baseUrl || env.PABILO_BASE_URL || '').trim();
+  const webhookSecret = String(
+    runtimeSecrets.webhookSecret || env.PABILO_WEBHOOK_SECRET || fsPrivate.webhookSecret || '',
+  ).trim();
 
   const pmDoc = (fsPublic.pagoMovil && typeof fsPublic.pagoMovil === 'object' ? fsPublic.pagoMovil : {});
   const usdtDoc = (fsPublic.usdt && typeof fsPublic.usdt === 'object' ? fsPublic.usdt : {});
@@ -268,6 +279,7 @@ async function loadPublicPaymentConfig({ db, env = process.env, runtimeSecrets =
       pmBankId,
       binanceBankId,
       baseUrl,
+      webhookSecret,
     },
   };
 }
@@ -356,6 +368,7 @@ async function createProCheckout({
   email = '',
   planId,
   methodId,
+  createLink = true,
   fetchImpl = globalThis.fetch,
   env = process.env,
   runtimeSecrets = {},
@@ -389,6 +402,32 @@ async function createProCheckout({
   const orderId = orderIdGenerator();
   const autoVerify =
     method.id === 'pago_movil' ? publicConfig.pagoMovil.autoVerify : publicConfig.usdt.autoVerify;
+  const bankId = method.id === 'pago_movil' ? secrets.pmBankId : secrets.binanceBankId;
+
+  let linkResult = null;
+  if (autoVerify && secrets.apiKey && bankId && createLink !== false) {
+    try {
+      linkResult = await createPaymentLink({
+        baseUrl: secrets.baseUrl,
+        apiKey: secrets.apiKey,
+        userBankId: bankId,
+        amount: expectedTotal,
+        currency: method.currency === 'BS' ? 'VEF' : 'USDT',
+        name: `${plan.name} · MargenCalcu`,
+        description: `Orden ${orderId}${email ? ` · ${email}` : ''}`.slice(0, 120),
+        redirectUrl: `https://margencalcu.online/gracias?orderId=${encodeURIComponent(orderId)}`,
+        webhookUrl: String(
+          runtimeSecrets.webhookUrl ||
+            env.PABILO_WEBHOOK_URL ||
+            'https://pabilowebhook-yqgkyclg5a-uc.a.run.app',
+        ).trim(),
+        notificationByWhatsapp: true,
+        fetchImpl,
+      });
+    } catch {
+      linkResult = null;
+    }
+  }
 
   const orderDoc = {
     v: 1,
@@ -414,9 +453,14 @@ async function createProCheckout({
     attempts: 0,
     maxAttempts: MAX_VERIFY_ATTEMPTS,
     autoVerify,
+    paymentLinkId: linkResult && linkResult.ok ? linkResult.id : null,
+    paymentLinkUrl: linkResult && linkResult.ok ? linkResult.url : null,
+    paymentLinkStatus: linkResult && linkResult.ok ? linkResult.status : null,
     lastAttemptedReference: null,
     providerErrorAt: null,
     retriableRefs: [],
+    activeVerifyingRef: null,
+    verifyingStartedAt: null,
     payment: null,
     expiresAt,
     createdAt: nowIso,
@@ -473,21 +517,71 @@ async function findConflictingOrderWithReference({ db, methodId, normalizedRef, 
   return null;
 }
 
-async function releaseReferenceLock({ db, lockKey, orderId, orderStatus = 'awaiting_payment', extraOrderPatch = {} }) {
-  const lockRef = db.collection('paymentRefs').doc(lockKey);
+async function recordVerificationLog({ db, entry }) {
+  const payload = {
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  };
+  try {
+    console.log(JSON.stringify({ event: 'pro_payment_audit', ...payload }));
+  } catch {
+    // Ignorar error de serialización en consola
+  }
+  if (!db) return;
+  try {
+    const id = `${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    await db.collection('pabiloLogs').doc(id).set(payload);
+  } catch {
+    // El log nunca debe bloquear un cobro válido
+  }
+}
+
+/**
+ * Busca si este usuario tiene una orden abierta marcada para reconciliación
+ * por el incidente del doble POST del 2026-11-11 que aún no haya sido consumida.
+ */
+async function findReconcilableIncidentOrder({ db, uid, methodId, excludeOrderId }) {
+  const snap = await db.collection('proOrders').where('uid', '==', uid).limit(20).get();
+  for (const doc of snap.docs) {
+    if (doc.id === excludeOrderId) continue;
+    const data = doc.data() || {};
+    if (
+      data.reconcileBugAllow === true &&
+      data.status === 'awaiting_payment' &&
+      !data.supersededByOrderId &&
+      data.method === methodId
+    ) {
+      return { id: doc.id, ...data };
+    }
+  }
+  return null;
+}
+
+async function releaseReferenceLock({
+  db,
+  lockKey,
+  orderId,
+  orderStatus = 'awaiting_payment',
+  extraOrderPatch = {},
+}) {
+  const lockRef = lockKey ? db.collection('paymentRefs').doc(lockKey) : null;
   const orderRef = db.collection('proOrders').doc(orderId);
   await db.runTransaction(async (tx) => {
-    const lockSnap = await tx.get(lockRef);
-    if (lockSnap.exists && lockSnap.data() && lockSnap.data().orderId === orderId) {
-      const lockStatus = lockSnap.data().status;
-      if (lockStatus === 'verifying') {
-        tx.delete(lockRef);
+    if (lockRef) {
+      const lockSnap = await tx.get(lockRef);
+      if (lockSnap.exists && lockSnap.data() && lockSnap.data().orderId === orderId) {
+        const lockStatus = lockSnap.data().status;
+        if (lockStatus === 'verifying') {
+          tx.delete(lockRef);
+        }
       }
     }
     tx.set(
       orderRef,
       {
         status: orderStatus,
+        activeVerifyingRef: null,
+        verifyingStartedAt: null,
         updatedAt: new Date().toISOString(),
         ...extraOrderPatch,
       },
@@ -496,11 +590,433 @@ async function releaseReferenceLock({ db, lockKey, orderId, orderStatus = 'await
   });
 }
 
+async function applyPaidOrderAndActivatePro({
+  db,
+  orderRef,
+  orderId,
+  claimedOrder,
+  uid,
+  method,
+  lockKey = null,
+  linkLockKey = null,
+  normalizedRef,
+  amountCheck,
+  amountVerifiedByProvider = false,
+  reconciledDuplicate = false,
+  paymentDate = null,
+  activatedBy = 'pabilo_auto',
+  reconcileOrderId = null,
+  nowMs = Date.now(),
+}) {
+  const plan = PRO_PLANS[claimedOrder.plan] || PRO_PLANS.monthly;
+  const alreadyPaid = Number(claimedOrder.paidAmount || 0);
+  const subCurrentRef = db.collection('users').doc(uid).collection('subscription').doc('current');
+  const subPendingRef = db.collection('users').doc(uid).collection('subscription').doc('pending');
+  const lockRef = lockKey ? db.collection('paymentRefs').doc(lockKey) : null;
+  const linkLockRef = linkLockKey ? db.collection('paymentRefs').doc(linkLockKey) : null;
+  const reconcileOrderRef =
+    reconcileOrderId && reconcileOrderId !== orderId
+      ? db.collection('proOrders').doc(reconcileOrderId)
+      : null;
+
+  let activatedSub;
+  let alreadyPaidOrder = false;
+
+  await db.runTransaction(async (tx) => {
+    const reads = [tx.get(orderRef), tx.get(subCurrentRef), tx.get(subPendingRef)];
+    if (lockRef) reads.push(tx.get(lockRef));
+    if (linkLockRef && linkLockRef.path !== (lockRef && lockRef.path)) reads.push(tx.get(linkLockRef));
+    if (reconcileOrderRef) reads.push(tx.get(reconcileOrderRef));
+
+    const results = await Promise.all(reads);
+    const freshOrderSnap = results[0];
+    const subSnap = results[1];
+    const pendingSnap = results[2];
+
+    let cursor = 3;
+    const lockSnap = lockRef ? results[cursor++] : null;
+    const linkLockSnap =
+      linkLockRef && linkLockRef.path !== (lockRef && lockRef.path) ? results[cursor++] : null;
+    const reconcileSnap = reconcileOrderRef ? results[cursor++] : null;
+
+    const freshOrder = freshOrderSnap.exists ? freshOrderSnap.data() || {} : claimedOrder;
+    const existingSub = subSnap.exists ? subSnap.data() : null;
+
+    if (freshOrder.status === 'paid') {
+      alreadyPaidOrder = true;
+      activatedSub = existingSub;
+      return;
+    }
+
+    if (lockSnap && lockSnap.exists) {
+      const ld = lockSnap.data() || {};
+      if (ld.status === 'consumed' && ld.orderId !== orderId) {
+        throw new ProPaymentError(
+          409,
+          'REFERENCE_ALREADY_USED',
+          'Esta referencia ya fue aplicada en otra orden.',
+        );
+      }
+    }
+
+    if (linkLockSnap && linkLockSnap.exists) {
+      const lld = linkLockSnap.data() || {};
+      if (lld.status === 'consumed' && lld.orderId !== orderId) {
+        throw new ProPaymentError(
+          409,
+          'REFERENCE_ALREADY_USED',
+          'Este enlace de pago ya fue aplicado anteriormente.',
+        );
+      }
+    }
+
+    if (reconcileOrderRef) {
+      if (!reconcileSnap || !reconcileSnap.exists) {
+        throw new ProPaymentError(
+          409,
+          'REFERENCE_ALREADY_USED',
+          'Esta referencia ya fue verificada anteriormente en otro pago.',
+        );
+      }
+      const recData = reconcileSnap.data() || {};
+      if (recData.status !== 'awaiting_payment' || recData.supersededByOrderId) {
+        throw new ProPaymentError(
+          409,
+          'REFERENCE_ALREADY_USED',
+          'Esta referencia ya fue aplicada anteriormente.',
+        );
+      }
+    }
+
+    const { startDate, endDate, nowIso: activatedAt } = computeSubscriptionDates({
+      existingSub,
+      durationDays: Number(freshOrder.durationDays || claimedOrder.durationDays || plan.durationDays),
+      nowMs,
+    });
+
+    const totalPaid = round(alreadyPaid + amountCheck.received, 2);
+    activatedSub = {
+      v: 1,
+      plan: plan.id,
+      status: 'active',
+      startDate,
+      endDate,
+      provider: method.providerId,
+      paymentRef: normalizedRef,
+      orderId,
+      paymentLinkId: freshOrder.paymentLinkId || claimedOrder.paymentLinkId || null,
+      amountUsd: Number(freshOrder.expectedAmountUsd || claimedOrder.expectedAmountUsd || plan.priceUsd),
+      paidAmount: totalPaid,
+      currency: method.currency,
+      overpaidAlert: amountCheck.overpaidAlert,
+      activatedBy,
+      updatedAt: activatedAt,
+    };
+
+    if (lockRef) {
+      tx.set(
+        lockRef,
+        {
+          lockKey,
+          reference: normalizedRef,
+          method: method.id,
+          orderId,
+          uid,
+          status: 'consumed',
+          amount: amountCheck.received,
+          consumedAt: activatedAt,
+          updatedAt: activatedAt,
+        },
+        { merge: true },
+      );
+    }
+
+    if (linkLockRef && linkLockRef.path !== (lockRef && lockRef.path)) {
+      tx.set(
+        linkLockRef,
+        {
+          lockKey: linkLockKey,
+          reference: normalizedRef,
+          method: method.id,
+          orderId,
+          uid,
+          status: 'consumed',
+          amount: amountCheck.received,
+          consumedAt: activatedAt,
+          updatedAt: activatedAt,
+        },
+        { merge: true },
+      );
+    }
+
+    if (reconcileOrderRef) {
+      tx.update(reconcileOrderRef, {
+        status: 'superseded',
+        supersededByOrderId: orderId,
+        reconcileBugAllow: false,
+        updatedAt: activatedAt,
+      });
+    }
+
+    tx.update(orderRef, {
+      status: 'paid',
+      paidAmount: totalPaid,
+      remainingAmount: 0,
+      paidAt: activatedAt,
+      paymentLinkStatus: freshOrder.paymentLinkId ? 'paid' : freshOrder.paymentLinkStatus || null,
+      activeVerifyingRef: null,
+      verifyingStartedAt: null,
+      lastAttemptedReference: null,
+      providerErrorAt: null,
+      reconcileBugAllow: false,
+      payment: {
+        reference: normalizedRef,
+        provider: method.providerId,
+        reportedAmount: amountCheck.received,
+        overpaid: amountCheck.overpaid,
+        overpaidAlert: amountCheck.overpaidAlert,
+        amountVerifiedByProvider: Boolean(amountVerifiedByProvider),
+        reconciledDuplicate: Boolean(reconciledDuplicate),
+        activatedBy,
+        paymentDate: paymentDate || null,
+        paidAt: activatedAt,
+      },
+      updatedAt: activatedAt,
+    });
+
+    tx.set(subCurrentRef, activatedSub);
+    if (pendingSnap.exists) {
+      tx.delete(subPendingRef);
+    }
+  });
+
+  return { alreadyPaidOrder, subscription: activatedSub };
+}
+
+async function verifyOrderViaPaymentLink({
+  db,
+  uid,
+  orderId,
+  preOrder,
+  method,
+  secrets,
+  fetchImpl,
+  nowMs,
+}) {
+  const linkId = String(preOrder.paymentLinkId || '').trim();
+  const linkLockKey = `link_${linkId}`;
+  const orderRef = db.collection('proOrders').doc(orderId);
+  const linkLockRef = db.collection('paymentRefs').doc(linkLockKey);
+  const nowIso = new Date(nowMs).toISOString();
+
+  let claimedOrder;
+  await db.runTransaction(async (tx) => {
+    const [orderSnap, linkLockSnap] = await Promise.all([tx.get(orderRef), tx.get(linkLockRef)]);
+    if (!orderSnap.exists) {
+      throw new ProPaymentError(404, 'ORDER_NOT_FOUND', 'Orden no encontrada.');
+    }
+    const order = orderSnap.data() || {};
+    if (order.uid !== uid) {
+      throw new ProPaymentError(403, 'FORBIDDEN', 'Esta orden no pertenece a tu cuenta.');
+    }
+    if (order.status === 'paid') {
+      throw new ProPaymentError(200, 'ALREADY_PAID', 'Orden ya pagada.');
+    }
+    if (order.status === 'verifying') {
+      const startedMs = Date.parse(order.verifyingStartedAt || order.updatedAt || '');
+      if (!Number.isFinite(startedMs) || nowMs - startedMs <= 65_000) {
+        throw new ProPaymentError(
+          409,
+          'VERIFY_IN_PROGRESS',
+          'Ya estamos verificando un pago en esta orden. Espera unos segundos.',
+        );
+      }
+    }
+
+    const paidAmount = Number(order.paidAmount || 0);
+    const expiresMs = order.expiresAt ? new Date(order.expiresAt).getTime() : 0;
+    if (paidAmount <= 0 && expiresMs && expiresMs < nowMs) {
+      throw new ProPaymentError(
+        400,
+        'ORDER_EXPIRED',
+        'Esta orden expiró para congelar la tasa BCV. Genera una orden nueva con la tasa vigente.',
+      );
+    }
+
+    if (linkLockSnap.exists) {
+      const ld = linkLockSnap.data() || {};
+      if (ld.orderId !== orderId || ld.status === 'consumed') {
+        throw new ProPaymentError(
+          409,
+          'REFERENCE_ALREADY_USED',
+          'Este enlace de pago ya fue procesado anteriormente.',
+        );
+      }
+    }
+
+    tx.set(linkLockRef, {
+      lockKey: linkLockKey,
+      reference: `LINK_${linkId}`,
+      method: method.id,
+      orderId,
+      uid,
+      status: 'verifying',
+      lockedAt: nowIso,
+      updatedAt: nowIso,
+    });
+    tx.update(orderRef, {
+      status: 'verifying',
+      activeVerifyingRef: `LINK_${linkId}`,
+      verifyingStartedAt: nowIso,
+      updatedAt: nowIso,
+    });
+    claimedOrder = order;
+  });
+
+  const linkInfo = await getPaymentLinkInfo({
+    baseUrl: secrets.baseUrl,
+    apiKey: secrets.apiKey,
+    paymentLinkId: linkId,
+    fetchImpl,
+  });
+
+  await recordVerificationLog({
+    db,
+    entry: {
+      source: 'verifyProPayment_link',
+      orderId,
+      uid,
+      method: method.id,
+      paymentLinkId: linkId,
+      status: linkInfo.status,
+      isPaid: linkInfo.isPaid,
+      reference: linkInfo.reference,
+      amount: linkInfo.amount,
+      paymentDate: linkInfo.paymentDate,
+      raw: linkInfo.raw || null,
+    },
+  });
+
+  if (!linkInfo.ok || !linkInfo.isPaid) {
+    await releaseReferenceLock({
+      db,
+      lockKey: linkLockKey,
+      orderId,
+      orderStatus: 'awaiting_payment',
+    });
+    return {
+      ok: false,
+      httpStatus: 404,
+      code: 'PAYMENT_NOT_FOUND',
+      retryable: true,
+      orderId,
+      message:
+        'Tu enlace de pago aún aparece pendiente en Pabilo. Si acabas de transferir o pagar, espera unos segundos o ingresa tu referencia bancaria.',
+    };
+  }
+
+  const reportedAmount = linkInfo.amount;
+  if (reportedAmount === null || reportedAmount === undefined || Number(reportedAmount) <= 0) {
+    await releaseReferenceLock({ db, lockKey: linkLockKey, orderId, orderStatus: 'awaiting_payment' });
+    return {
+      ok: false,
+      httpStatus: 422,
+      code: 'UNREADABLE_AMOUNT',
+      retryable: false,
+      orderId,
+      message: 'No pudimos validar el monto del enlace pagado en Pabilo.',
+    };
+  }
+
+  const expectedTotal = Number(claimedOrder.expectedTotal);
+  const alreadyPaid = Number(claimedOrder.paidAmount || 0);
+  const pendingAmount = round(Math.max(0.01, expectedTotal - alreadyPaid), 2);
+  const amountCheck = checkAmount(pendingAmount, reportedAmount);
+  if (!amountCheck.ok && amountCheck.shortfall > 0) {
+    await releaseReferenceLock({ db, lockKey: linkLockKey, orderId, orderStatus: 'awaiting_payment' });
+    return {
+      ok: false,
+      httpStatus: 409,
+      code: 'INSUFFICIENT_AMOUNT',
+      retryable: false,
+      orderId,
+      message: `El monto pagado en el enlace (${reportedAmount.toFixed(2)}) es menor al monto del plan (${pendingAmount.toFixed(2)}).`,
+    };
+  }
+
+  const normalizedRef = linkInfo.reference
+    ? normalizeReference(linkInfo.reference, method.allowLetters) || `LINK_${linkId}`
+    : `LINK_${linkId}`;
+
+  if (linkInfo.reference) {
+    const conflict = await findConflictingOrderWithReference({
+      db,
+      methodId: method.id,
+      normalizedRef,
+      excludeOrderId: orderId,
+    });
+    if (conflict) {
+      await releaseReferenceLock({ db, lockKey: linkLockKey, orderId, orderStatus: 'awaiting_payment' });
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'REFERENCE_ALREADY_USED',
+        retryable: false,
+        orderId,
+        message: 'Esta referencia ya fue verificada anteriormente en otra orden.',
+      };
+    }
+  }
+
+  const refLockKey = linkInfo.reference ? makeReferenceLockKey(method.id, normalizedRef) : null;
+  const activation = await applyPaidOrderAndActivatePro({
+    db,
+    orderRef,
+    orderId,
+    claimedOrder,
+    uid,
+    method,
+    lockKey: refLockKey,
+    linkLockKey,
+    normalizedRef,
+    amountCheck,
+    amountVerifiedByProvider: true,
+    reconciledDuplicate: true,
+    paymentDate: linkInfo.paymentDate,
+    activatedBy: 'pabilo_link',
+    nowMs,
+  });
+
+  if (activation.alreadyPaidOrder) {
+    return {
+      ok: true,
+      httpStatus: 200,
+      code: 'ALREADY_ACTIVATED',
+      status: 'paid',
+      orderId,
+      subscription: activation.subscription,
+      message: 'Tu suscripción Pro ya está activa para esta orden.',
+    };
+  }
+
+  return {
+    ok: true,
+    httpStatus: 200,
+    code: 'ACTIVATED',
+    status: 'paid',
+    orderId,
+    reconciledDuplicate: true,
+    subscription: activation.subscription,
+    message: '¡Pago confirmado mediante enlace Pabilo! Tu plan Pro ya está activo.',
+  };
+}
+
 async function verifyProPayment({
   db,
   uid,
   orderId,
-  rawReference,
+  rawReference = '',
+  paymentDate = null,
   fetchImpl = globalThis.fetch,
   env = process.env,
   runtimeSecrets = {},
@@ -523,6 +1039,7 @@ async function verifyProPayment({
     const subSnap = await db.collection('users').doc(uid).collection('subscription').doc('current').get();
     return {
       ok: true,
+      httpStatus: 200,
       code: 'ALREADY_ACTIVATED',
       status: 'paid',
       orderId,
@@ -534,6 +1051,40 @@ async function verifyProPayment({
   const method = PAYMENT_METHODS[preOrder.method];
   if (!method) {
     throw new ProPaymentError(400, 'INVALID_METHOD', 'Método de pago inválido en la orden.');
+  }
+
+  const { secrets } = await loadPublicPaymentConfig({ db, env, runtimeSecrets });
+  const bankId = method.id === 'pago_movil' ? secrets.pmBankId : secrets.binanceBankId;
+  if (!secrets.apiKey || !bankId) {
+    throw new ProPaymentError(
+      503,
+      'AUTO_VERIFY_UNAVAILABLE',
+      'La verificación automática de Pabilo no está activa para este método aún. Puedes enviar tu referencia para validación manual.',
+      { fallbackManual: true },
+    );
+  }
+
+  const hasRawRef = Boolean(String(rawReference || '').trim());
+  if (!hasRawRef) {
+    if (preOrder.paymentLinkId) {
+      return verifyOrderViaPaymentLink({
+        db,
+        uid,
+        orderId,
+        preOrder,
+        method,
+        secrets,
+        fetchImpl,
+        nowMs,
+      });
+    }
+    throw new ProPaymentError(
+      400,
+      'INVALID_REFERENCE',
+      method.allowLetters
+        ? `Ingresa un ID de orden/referencia válido (mínimo ${method.minRefLength} caracteres).`
+        : `Ingresa los dígitos de la referencia bancaria (mínimo ${method.minRefLength} dígitos).`,
+    );
   }
 
   const normalizedRef = normalizeReference(rawReference, method.allowLetters);
@@ -551,17 +1102,6 @@ async function verifyProPayment({
     );
   }
 
-  const { secrets } = await loadPublicPaymentConfig({ db, env, runtimeSecrets });
-  const bankId = method.id === 'pago_movil' ? secrets.pmBankId : secrets.binanceBankId;
-  if (!secrets.apiKey || !bankId) {
-    throw new ProPaymentError(
-      503,
-      'AUTO_VERIFY_UNAVAILABLE',
-      'La verificación automática de Pabilo no está activa para este método aún. Puedes enviar tu referencia para validación manual.',
-      { fallbackManual: true },
-    );
-  }
-
   const lockKey = makeReferenceLockKey(method.id, normalizedRef);
   const lockRef = db.collection('paymentRefs').doc(lockKey);
   const orderRef = db.collection('proOrders').doc(orderId);
@@ -569,6 +1109,7 @@ async function verifyProPayment({
 
   // Paso 1: Reclamación transaccional de la referencia antes de consultar Pabilo.
   let claimedOrder;
+  let wasStaleVerifyingSameRef = false;
   await db.runTransaction(async (tx) => {
     const [orderSnap, lockSnap] = await Promise.all([tx.get(orderRef), tx.get(lockRef)]);
     if (!orderSnap.exists) {
@@ -582,10 +1123,17 @@ async function verifyProPayment({
       throw new ProPaymentError(200, 'ALREADY_PAID', 'Orden ya pagada.');
     }
     if (order.status === 'verifying') {
-      throw new ProPaymentError(
-        409,
-        'VERIFY_IN_PROGRESS',
-        'Ya estamos verificando un pago en esta orden. Espera unos segundos.',
+      const startedMs = Date.parse(order.verifyingStartedAt || order.updatedAt || '');
+      const isStale = Number.isFinite(startedMs) && nowMs - startedMs > 65_000;
+      if (!isStale) {
+        throw new ProPaymentError(
+          409,
+          'VERIFY_IN_PROGRESS',
+          'Ya estamos verificando un pago en esta orden. Espera unos segundos.',
+        );
+      }
+      wasStaleVerifyingSameRef = Boolean(
+        order.activeVerifyingRef && order.activeVerifyingRef === normalizedRef,
       );
     }
 
@@ -650,16 +1198,22 @@ async function verifyProPayment({
     tx.update(orderRef, {
       status: 'verifying',
       attempts: attempts + 1,
+      activeVerifyingRef: normalizedRef,
+      verifyingStartedAt: nowIso,
       updatedAt: nowIso,
     });
 
     claimedOrder = { ...order, attempts: attempts + 1 };
   });
 
-  // Paso 2: Consultar Pabilo por el monto pendiente exacto.
+  // Paso 2: Consultar Pabilo por referencia (con amount: 0 primero y fecha_pago en Caracas).
   const expectedTotal = Number(claimedOrder.expectedTotal);
   const alreadyPaid = Number(claimedOrder.paidAmount || 0);
   const pendingAmount = round(Math.max(0.01, expectedTotal - alreadyPaid), 2);
+  const validFechaPago =
+    typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())
+      ? paymentDate.trim()
+      : getCaracasDateString(nowMs, 0);
 
   const verification = await verifyPayment({
     baseUrl: secrets.baseUrl,
@@ -667,7 +1221,31 @@ async function verifyProPayment({
     userBankId: bankId,
     bankReference: normalizedRef,
     amount: pendingAmount,
+    fechaPago: validFechaPago,
+    nowMs,
     fetchImpl,
+  });
+
+  await recordVerificationLog({
+    db,
+    entry: {
+      source: 'verifyProPayment',
+      orderId,
+      uid,
+      method: method.id,
+      reference: normalizedRef,
+      requestedAmount: pendingAmount,
+      fecha_pago: validFechaPago,
+      found: Boolean(verification.found),
+      is_new: verification.isNew,
+      reportedAmount: verification.reportedAmount ?? null,
+      credit_cost: verification.creditCost ?? null,
+      payment_date: verification.paymentDate ?? null,
+      payment_status: verification.paymentStatus ?? null,
+      payment_link_id: verification.paymentLinkId ?? null,
+      providerError: Boolean(verification.providerError),
+      raw: verification.raw || null,
+    },
   });
 
   // Paso 3A: Error temporal o de red/timeout/banco desconocido -> liberar lock y marcar para autoreconciliación.
@@ -718,12 +1296,17 @@ async function verifyProPayment({
       retryable: true,
       orderId,
       attemptsRemaining: Math.max(0, MAX_VERIFY_ATTEMPTS - claimedOrder.attempts),
-      message: verification.message || 'No encontramos un pago con esa referencia todavía. Si acabas de transferir, espera 15 segundos y vuelve a verificar.',
+      message:
+        verification.message ||
+        'No encontramos un pago con esa referencia todavía. Si acabas de transferir, espera 15 segundos y vuelve a verificar.',
     };
   }
 
-  // Paso 3C: `is_new: false` -> verificar si es una reconciliación legítima del propio usuario tras timeout.
+  // Paso 3C: `is_new: false` -> verificar si pertenece legítimamente a este pedido/enlace y nunca a otro pedido.
   let reconciledDuplicate = false;
+  let isPaidViaOrderLink = false;
+  let reconcileOrderId = null;
+
   if (!verification.isNew) {
     const conflictingOrder = await findConflictingOrderWithReference({
       db,
@@ -731,12 +1314,92 @@ async function verifyProPayment({
       normalizedRef,
       excludeOrderId: orderId,
     });
+
+    if (conflictingOrder) {
+      await releaseReferenceLock({
+        db,
+        lockKey,
+        orderId,
+        orderStatus: 'awaiting_payment',
+      });
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'REFERENCE_ALREADY_USED',
+        retryable: false,
+        orderId,
+        message: 'Esta referencia ya fue verificada anteriormente en otro pedido.',
+      };
+    }
+
+    // Idempotencia si el usuario ya tiene Pro activo con esta misma referencia
+    const subSnap = await db.collection('users').doc(uid).collection('subscription').doc('current').get();
+    const currentSub = subSnap.exists ? subSnap.data() : null;
+    if (
+      currentSub &&
+      currentSub.status === 'active' &&
+      currentSub.paymentRef === normalizedRef &&
+      currentSub.endDate &&
+      new Date(currentSub.endDate).getTime() > nowMs
+    ) {
+      await releaseReferenceLock({ db, lockKey, orderId, orderStatus: 'paid' });
+      return {
+        ok: true,
+        httpStatus: 200,
+        code: 'ALREADY_ACTIVATED',
+        status: 'paid',
+        orderId,
+        subscription: currentSub,
+        message: 'Tu suscripción Pro ya está activa con esta referencia.',
+      };
+    }
+
+    // Caso 1: Pago realizado mediante enlace de Pabilo de ESTE pedido (`GET /paymentlink/{id}/info`).
+    if (claimedOrder.paymentLinkId) {
+      if (
+        verification.paymentLinkId &&
+        String(verification.paymentLinkId) === String(claimedOrder.paymentLinkId)
+      ) {
+        isPaidViaOrderLink = true;
+      } else {
+        const linkInfo = await getPaymentLinkInfo({
+          baseUrl: secrets.baseUrl,
+          apiKey: secrets.apiKey,
+          paymentLinkId: claimedOrder.paymentLinkId,
+          fetchImpl,
+        });
+        if (linkInfo.ok && linkInfo.isPaid) {
+          const linkRefNorm = linkInfo.reference
+            ? normalizeReference(linkInfo.reference, method.allowLetters)
+            : null;
+          if (!linkRefNorm || linkRefNorm === normalizedRef) {
+            isPaidViaOrderLink = true;
+          }
+        }
+      }
+    }
+
     const retriableRefs = Array.isArray(claimedOrder.retriableRefs) ? claimedOrder.retriableRefs : [];
     const isSelfRetryAfterError =
       (claimedOrder.lastAttemptedReference === normalizedRef && Boolean(claimedOrder.providerErrorAt)) ||
-      retriableRefs.includes(normalizedRef);
+      retriableRefs.includes(normalizedRef) ||
+      wasStaleVerifyingSameRef ||
+      Boolean(claimedOrder.reconcileBugAllow);
 
-    if (conflictingOrder || !isSelfRetryAfterError) {
+    let incidentOrder = null;
+    if (!isPaidViaOrderLink && !isSelfRetryAfterError) {
+      incidentOrder = await findReconcilableIncidentOrder({
+        db,
+        uid,
+        methodId: method.id,
+        excludeOrderId: orderId,
+      });
+      if (incidentOrder) {
+        reconcileOrderId = incidentOrder.id;
+      }
+    }
+
+    if (!isPaidViaOrderLink && !isSelfRetryAfterError && !incidentOrder) {
       await releaseReferenceLock({
         db,
         lockKey,
@@ -755,7 +1418,7 @@ async function verifyProPayment({
     reconciledDuplicate = true;
   }
 
-  // Paso 3D: Verificación estricta de monto (fallback sin `amount` nunca aprueba sin reportedAmount).
+  // Paso 3D: Verificación estricta de monto (nunca aprueba sin reportedAmount).
   const reportedAmount = verification.reportedAmount;
   if (reportedAmount === null || reportedAmount === undefined || Number(reportedAmount) <= 0) {
     await releaseReferenceLock({
@@ -776,7 +1439,25 @@ async function verifyProPayment({
 
   const amountCheck = checkAmount(pendingAmount, reportedAmount);
 
-  // Paso 3E: Pago parcial -> conservar lock sobre esta referencia, acumular `paidAmount` y extender vigencia 30m.
+  // Si `is_new: false` y el monto reportado no alcanza el esperado, rechazar en lugar de aceptar parcial ambiguo.
+  if (!verification.isNew && !amountCheck.ok && amountCheck.shortfall > 0) {
+    await releaseReferenceLock({
+      db,
+      lockKey,
+      orderId,
+      orderStatus: 'awaiting_payment',
+    });
+    return {
+      ok: false,
+      httpStatus: 409,
+      code: 'INSUFFICIENT_AMOUNT',
+      retryable: false,
+      orderId,
+      message: `El monto reportado (${amountCheck.received.toFixed(2)}) es menor al monto esperado (${pendingAmount.toFixed(2)}).`,
+    };
+  }
+
+  // Paso 3E: Pago parcial nuevo (`is_new: true`) -> conservar lock sobre esta referencia, acumular `paidAmount`.
   if (!amountCheck.ok && amountCheck.shortfall > 0) {
     const newPaidAmount = round(alreadyPaid + amountCheck.received, 2);
     const newRemainingAmount = round(Math.max(0, expectedTotal - newPaidAmount), 2);
@@ -821,6 +1502,8 @@ async function verifyProPayment({
         partials: nextPartials,
         partialRefs: nextPartialRefs,
         expiresAt: extendedExpiry,
+        activeVerifyingRef: null,
+        verifyingStartedAt: null,
         lastAttemptedReference: null,
         providerErrorAt: null,
         updatedAt: finishIso,
@@ -847,80 +1530,53 @@ async function verifyProPayment({
   }
 
   // Paso 3F: Pago completo aprobado -> consumir referencia, marcar orden y activar/extender Pro atómicamente.
-  const plan = PRO_PLANS[claimedOrder.plan] || PRO_PLANS.monthly;
-  const subCurrentRef = db.collection('users').doc(uid).collection('subscription').doc('current');
-  const subPendingRef = db.collection('users').doc(uid).collection('subscription').doc('pending');
-
-  let activatedSub;
-  await db.runTransaction(async (tx) => {
-    const [subSnap, pendingSnap] = await Promise.all([tx.get(subCurrentRef), tx.get(subPendingRef)]);
-    const existingSub = subSnap.exists ? subSnap.data() : null;
-    const { startDate, endDate, nowIso: activatedAt } = computeSubscriptionDates({
-      existingSub,
-      durationDays: Number(claimedOrder.durationDays || plan.durationDays),
+  const linkLockKey = claimedOrder.paymentLinkId ? `link_${claimedOrder.paymentLinkId}` : null;
+  let activation;
+  try {
+    activation = await applyPaidOrderAndActivatePro({
+      db,
+      orderRef,
+      orderId,
+      claimedOrder,
+      uid,
+      method,
+      lockKey,
+      linkLockKey,
+      normalizedRef,
+      amountCheck,
+      amountVerifiedByProvider: verification.amountVerifiedByProvider === true,
+      reconciledDuplicate,
+      paymentDate: verification.paymentDate,
+      activatedBy: isPaidViaOrderLink ? 'pabilo_link' : 'pabilo_auto',
+      reconcileOrderId,
       nowMs,
     });
-
-    const totalPaid = round(alreadyPaid + amountCheck.received, 2);
-    activatedSub = {
-      v: 1,
-      plan: plan.id,
-      status: 'active',
-      startDate,
-      endDate,
-      provider: method.providerId,
-      paymentRef: normalizedRef,
-      orderId,
-      amountUsd: Number(claimedOrder.expectedAmountUsd || plan.priceUsd),
-      paidAmount: totalPaid,
-      currency: method.currency,
-      overpaidAlert: amountCheck.overpaidAlert,
-      activatedBy: 'pabilo_auto',
-      updatedAt: activatedAt,
-    };
-
-    tx.set(
-      lockRef,
-      {
-        lockKey,
-        reference: normalizedRef,
-        method: method.id,
+  } catch (err) {
+    if (err instanceof ProPaymentError && err.code === 'REFERENCE_ALREADY_USED') {
+      await releaseReferenceLock({ db, lockKey, orderId, orderStatus: 'awaiting_payment' });
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'REFERENCE_ALREADY_USED',
+        retryable: false,
         orderId,
-        uid,
-        status: 'consumed',
-        amount: amountCheck.received,
-        consumedAt: activatedAt,
-        updatedAt: activatedAt,
-      },
-      { merge: true },
-    );
-
-    tx.update(orderRef, {
-      status: 'paid',
-      paidAmount: totalPaid,
-      remainingAmount: 0,
-      paidAt: activatedAt,
-      lastAttemptedReference: null,
-      providerErrorAt: null,
-      payment: {
-        reference: normalizedRef,
-        provider: method.providerId,
-        reportedAmount: amountCheck.received,
-        overpaid: amountCheck.overpaid,
-        overpaidAlert: amountCheck.overpaidAlert,
-        amountVerifiedByProvider: verification.amountVerifiedByProvider === true,
-        reconciledDuplicate,
-        paymentDate: verification.paymentDate || null,
-        paidAt: activatedAt,
-      },
-      updatedAt: activatedAt,
-    });
-
-    tx.set(subCurrentRef, activatedSub);
-    if (pendingSnap.exists) {
-      tx.delete(subPendingRef);
+        message: err.message,
+      };
     }
-  });
+    throw err;
+  }
+
+  if (activation.alreadyPaidOrder) {
+    return {
+      ok: true,
+      httpStatus: 200,
+      code: 'ALREADY_ACTIVATED',
+      status: 'paid',
+      orderId,
+      subscription: activation.subscription,
+      message: 'Tu suscripción Pro ya está activa para esta orden.',
+    };
+  }
 
   return {
     ok: true,
@@ -929,8 +1585,244 @@ async function verifyProPayment({
     status: 'paid',
     orderId,
     reconciledDuplicate,
-    subscription: activatedSub,
+    subscription: activation.subscription,
     message: '¡Pago verificado automáticamente! Tu plan Pro ya está activo.',
+  };
+}
+
+/**
+ * Procesa webhooks de enlaces de pago de Pabilo (`link.paid`, etc.).
+ * Reconsulta SIEMPRE `GET /paymentlink/{id}/info` antes de activar Pro.
+ */
+async function handlePabiloWebhook({
+  db,
+  rawBody,
+  parsedBody,
+  headers = {},
+  fetchImpl = globalThis.fetch,
+  env = process.env,
+  runtimeSecrets = {},
+  nowMs = Date.now(),
+}) {
+  const { secrets } = await loadPublicPaymentConfig({ db, env, runtimeSecrets });
+  const signatureHeader = headers['x-pabilo-signature'] || headers['X-Pabilo-Signature'] || '';
+
+  if (secrets.webhookSecret) {
+    const validSig = verifyWebhookSignature({
+      rawBody: rawBody !== undefined ? rawBody : parsedBody,
+      signatureHeader,
+      webhookSecret: secrets.webhookSecret,
+    });
+    if (!validSig) {
+      await recordVerificationLog({
+        db,
+        entry: {
+          source: 'pabiloWebhook',
+          rejected: 'INVALID_SIGNATURE',
+          hasSignature: Boolean(signatureHeader),
+        },
+      });
+      return {
+        ok: false,
+        httpStatus: 401,
+        code: 'INVALID_SIGNATURE',
+        message: 'Firma X-Pabilo-Signature inválida.',
+      };
+    }
+  }
+
+  const body = parsedBody && typeof parsedBody === 'object' ? parsedBody : {};
+  const data = body.data && typeof body.data === 'object' ? body.data : {};
+  const ubp = data.user_bank_payment || body.user_bank_payment || null;
+  const linkObj = data.payment_link || data.paymentlink || body.payment_link || body.paymentlink || null;
+
+  const paymentLinkId = String(
+    data.payment_link_id ||
+      body.payment_link_id ||
+      (linkObj && linkObj.id) ||
+      (ubp && ubp.payment_link_id) ||
+      '',
+  ).trim();
+
+  await recordVerificationLog({
+    db,
+    entry: {
+      source: 'pabiloWebhook',
+      eventType: body.eventType || body.event || null,
+      eventId: body.eventId || null,
+      paymentLinkId: paymentLinkId || null,
+      payloadStatus: (ubp && ubp.status) || (linkObj && linkObj.status) || body.status || null,
+      raw: body,
+    },
+  });
+
+  if (!paymentLinkId) {
+    return {
+      ok: true,
+      httpStatus: 200,
+      ignored: true,
+      code: 'IGNORED_NO_LINK_ID',
+      message: 'Evento recibido sin payment_link_id.',
+    };
+  }
+
+  const orderSnap = await db
+    .collection('proOrders')
+    .where('paymentLinkId', '==', paymentLinkId)
+    .limit(5)
+    .get();
+
+  if (!orderSnap.docs.length) {
+    return {
+      ok: true,
+      httpStatus: 200,
+      ignored: true,
+      code: 'ORDER_NOT_FOUND',
+      paymentLinkId,
+      message: 'No hay una orden asociada a este payment_link_id.',
+    };
+  }
+
+  const orderDoc = orderSnap.docs[0];
+  const orderId = orderDoc.id;
+  const order = orderDoc.data() || {};
+
+  if (order.status === 'paid') {
+    const subSnap = await db.collection('users').doc(order.uid).collection('subscription').doc('current').get();
+    return {
+      ok: true,
+      httpStatus: 200,
+      code: 'ALREADY_ACTIVATED',
+      orderId,
+      subscription: subSnap.exists ? subSnap.data() : null,
+      message: 'Orden ya pagada.',
+    };
+  }
+
+  const method = PAYMENT_METHODS[order.method];
+  if (!method || !secrets.apiKey) {
+    return {
+      ok: false,
+      httpStatus: 500,
+      code: 'CONFIGURATION_ERROR',
+      orderId,
+      message: 'Configuración incompleta para verificar enlace Pabilo.',
+    };
+  }
+
+  // Fuente de verdad obligatoria: reconsultar GET /paymentlink/{id}/info en Pabilo
+  const linkInfo = await getPaymentLinkInfo({
+    baseUrl: secrets.baseUrl,
+    apiKey: secrets.apiKey,
+    paymentLinkId,
+    fetchImpl,
+  });
+
+  await recordVerificationLog({
+    db,
+    entry: {
+      source: 'pabiloWebhook_verifyLink',
+      orderId,
+      paymentLinkId,
+      isPaid: linkInfo.isPaid,
+      status: linkInfo.status,
+      amount: linkInfo.amount,
+      reference: linkInfo.reference,
+      raw: linkInfo.raw || null,
+    },
+  });
+
+  if (!linkInfo.ok || !linkInfo.isPaid) {
+    return {
+      ok: true,
+      httpStatus: 200,
+      code: 'LINK_NOT_PAID',
+      orderId,
+      paymentLinkId,
+      status: linkInfo.status || 'pending',
+      message: 'El enlace aún no está confirmado como pagado en Pabilo.',
+    };
+  }
+
+  const reportedAmount = linkInfo.amount;
+  if (reportedAmount === null || reportedAmount === undefined || Number(reportedAmount) <= 0) {
+    return {
+      ok: false,
+      httpStatus: 422,
+      code: 'UNREADABLE_AMOUNT',
+      orderId,
+      message: 'No se pudo confirmar el monto pagado del enlace en Pabilo.',
+    };
+  }
+
+  const expectedTotal = Number(order.expectedTotal);
+  const alreadyPaid = Number(order.paidAmount || 0);
+  const pendingAmount = round(Math.max(0.01, expectedTotal - alreadyPaid), 2);
+  const amountCheck = checkAmount(pendingAmount, reportedAmount);
+  if (!amountCheck.ok && amountCheck.shortfall > 0) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      code: 'INSUFFICIENT_AMOUNT',
+      orderId,
+      message: 'El monto del enlace pagado es menor al esperado del plan.',
+    };
+  }
+
+  const rawRef = linkInfo.reference || (ubp && (ubp.bank_reference_id || ubp.reference)) || '';
+  const normalizedRef = rawRef
+    ? normalizeReference(rawRef, method.allowLetters) || `LINK_${paymentLinkId}`
+    : `LINK_${paymentLinkId}`;
+
+  if (rawRef) {
+    const conflict = await findConflictingOrderWithReference({
+      db,
+      methodId: method.id,
+      normalizedRef,
+      excludeOrderId: orderId,
+    });
+    if (conflict) {
+      return {
+        ok: false,
+        httpStatus: 409,
+        code: 'REFERENCE_ALREADY_USED',
+        orderId,
+        message: 'La referencia del enlace ya fue consumida por otra orden.',
+      };
+    }
+  }
+
+  const lockKey = rawRef ? makeReferenceLockKey(method.id, normalizedRef) : null;
+  const linkLockKey = `link_${paymentLinkId}`;
+  const orderRef = db.collection('proOrders').doc(orderId);
+
+  const activation = await applyPaidOrderAndActivatePro({
+    db,
+    orderRef,
+    orderId,
+    claimedOrder: order,
+    uid: order.uid,
+    method,
+    lockKey,
+    linkLockKey,
+    normalizedRef,
+    amountCheck,
+    amountVerifiedByProvider: true,
+    reconciledDuplicate: true,
+    paymentDate: linkInfo.paymentDate,
+    activatedBy: 'pabilo_webhook',
+    nowMs,
+  });
+
+  return {
+    ok: true,
+    httpStatus: 200,
+    code: activation.alreadyPaidOrder ? 'ALREADY_ACTIVATED' : 'ACTIVATED',
+    status: 'paid',
+    orderId,
+    paymentLinkId,
+    subscription: activation.subscription,
+    message: 'Webhook procesado correctamente.',
   };
 }
 
@@ -950,5 +1842,7 @@ module.exports = {
   getProPaymentConfigPayload,
   createProCheckout,
   findConflictingOrderWithReference,
+  findReconcilableIncidentOrder,
   verifyProPayment,
+  handlePabiloWebhook,
 };

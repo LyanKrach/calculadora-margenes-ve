@@ -70,6 +70,7 @@ class SubscriptionService {
   }
 
   static const _subCachePrefix = 'pro_subscription_cache_v1_';
+  static const _orderCachePrefix = 'pro_active_order_v1_';
 
   final http.Client _client;
   final Future<String?> Function()? _tokenProvider;
@@ -160,6 +161,42 @@ class SubscriptionService {
         await prefs.remove(key);
       } else {
         await prefs.setString(key, jsonEncode(data));
+      }
+    } catch (_) {}
+  }
+
+  Future<ProCheckoutOrder?> loadSavedOrder() async {
+    if (!AuthService.isFirebaseInitialized) return null;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_orderCachePrefix$uid');
+      if (raw == null || raw.isEmpty) return null;
+      final map = jsonDecode(raw);
+      if (map is! Map<String, dynamic>) return null;
+      final ord = ProCheckoutOrder.fromJson(map);
+      if (ord.id.isEmpty || ord.status == 'paid' || ord.isExpired) {
+        await prefs.remove('$_orderCachePrefix$uid');
+        return null;
+      }
+      return ord;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveActiveOrder(ProCheckoutOrder? order) async {
+    if (!AuthService.isFirebaseInitialized) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '$_orderCachePrefix$uid';
+      if (order == null || order.status == 'paid') {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, jsonEncode(order.toJson()));
       }
     } catch (_) {}
   }

@@ -393,6 +393,8 @@ class ProCheckoutOrder {
   final bool autoVerify;
   final DateTime? expiresAt;
   final String status;
+  final String? paymentLinkId;
+  final String? paymentLinkUrl;
 
   const ProCheckoutOrder({
     required this.id,
@@ -410,6 +412,8 @@ class ProCheckoutOrder {
     required this.autoVerify,
     this.expiresAt,
     required this.status,
+    this.paymentLinkId,
+    this.paymentLinkUrl,
   });
 
   bool get isExpired {
@@ -438,7 +442,29 @@ class ProCheckoutOrder {
         autoVerify: autoVerify,
         expiresAt: expiresAt ?? this.expiresAt,
         status: status,
+        paymentLinkId: paymentLinkId,
+        paymentLinkUrl: paymentLinkUrl,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'plan': plan.id,
+        'method': method.id,
+        'currency': currency,
+        'expectedAmountUsd': expectedAmountUsd,
+        'expectedAmountBs': expectedAmountBs,
+        'expectedTotal': expectedTotal,
+        'paidAmount': paidAmount,
+        'remainingAmount': remainingAmount,
+        'rateBs': rateBs,
+        'rateSource': rateSource,
+        if (rateEffectiveDate != null) 'rateEffectiveDate': rateEffectiveDate,
+        'autoVerify': autoVerify,
+        if (expiresAt != null) 'expiresAt': expiresAt!.toUtc().toIso8601String(),
+        'status': status,
+        if (paymentLinkId != null) 'paymentLinkId': paymentLinkId,
+        if (paymentLinkUrl != null) 'paymentLinkUrl': paymentLinkUrl,
+      };
 
   factory ProCheckoutOrder.fromJson(Map<String, dynamic> json) {
     return ProCheckoutOrder(
@@ -457,6 +483,8 @@ class ProCheckoutOrder {
       autoVerify: json['autoVerify'] == true,
       expiresAt: _parseIso(json['expiresAt']),
       status: json['status']?.toString() ?? 'awaiting_payment',
+      paymentLinkId: json['paymentLinkId']?.toString(),
+      paymentLinkUrl: json['paymentLinkUrl']?.toString(),
     );
   }
 }

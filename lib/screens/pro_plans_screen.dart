@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/rate.dart';
 import '../models/subscription_state.dart';
@@ -78,6 +79,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     setState(() => _loadingConfig = true);
     try {
       await _subService.refreshSubscription();
+      final savedOrder = await _subService.loadSavedOrder();
       final results = await Future.wait<Object?>([
         _ratesService.fetchAll().catchError((_) => <RateSource, Rate>{}),
         _subService
@@ -91,6 +93,11 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
 
       if (!mounted) return;
       setState(() {
+        if (_activeOrder == null && savedOrder != null) {
+          _activeOrder = savedOrder;
+          _selectedPlan = savedOrder.plan;
+          _selectedMethod = savedOrder.method;
+        }
         if (remoteCfg != null) {
           _paymentConfig = remoteCfg;
         }
@@ -148,6 +155,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
         plan: _selectedPlan,
         method: _selectedMethod,
       );
+      await _subService.saveActiveOrder(order);
       if (!mounted) return order;
       setState(() {
         _activeOrder = order;
@@ -229,13 +237,15 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
 
       if (res.isActivated) {
         _refCtrl.clear();
+        await _subService.saveActiveOrder(null);
+        if (!mounted) return;
         setState(() {
           _activeOrder = null;
           _subState = _subService.currentState;
           _statusBanner = const _PayBanner(
             tone: _BannerTone.success,
             message:
-                '¡Suscripción Pro activada automáticamente! Ya tienes productos ilimitados y acceso completo.',
+                '¡Suscripción Pro activada automáticamente! Ya tienes todas las funciones desbloqueadas.',
           );
         });
         _showSnack('¡Plan Pro activado al instante!');
@@ -246,6 +256,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
           remainingAmount: res.remainingAmount ?? ord.remainingAmount,
           expiresAt: res.expiresAt,
         );
+        await _subService.saveActiveOrder(nextOrder);
+        if (!mounted) return;
         final remText = res.remainingAmount?.toStringAsFixed(2);
         setState(() {
           _activeOrder = nextOrder;
@@ -266,6 +278,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
           );
         });
       } else if (res.code == 'ORDER_EXPIRED') {
+        await _subService.saveActiveOrder(null);
+        if (!mounted) return;
         setState(() {
           _activeOrder = null;
           _statusBanner = _PayBanner(
@@ -945,8 +959,83 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                 : 'Abonado: \$${ord.paidAmount.toStringAsFixed(2)} · Falta: \$$remStr USDT',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
+        if (ord.paymentLinkUrl != null && ord.paymentLinkUrl!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  final uri = Uri.tryParse(ord.paymentLinkUrl!);
+                  if (uri != null) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Pagar con enlace Pabilo'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _verifying ? null : () => _verifyOrderLink(ord),
+                icon: const Icon(Icons.verified_outlined, size: 16),
+                label: const Text('Ya pagué · Verificar enlace'),
+              ),
+            ],
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _verifyOrderLink(ProCheckoutOrder ord) async {
+    if (_verifying) return;
+    setState(() {
+      _verifying = true;
+      _statusBanner = const _PayBanner(
+        tone: _BannerTone.info,
+        message: 'Consultando el estado real de tu enlace de pago en Pabilo…',
+      );
+    });
+    try {
+      final res = await _subService.verifyPayment(
+        orderId: ord.id,
+        reference: '',
+      );
+      if (!mounted) return;
+      if (res.isActivated) {
+        _refCtrl.clear();
+        await _subService.saveActiveOrder(null);
+        if (!mounted) return;
+        setState(() {
+          _activeOrder = null;
+          _subState = _subService.currentState;
+          _statusBanner = const _PayBanner(
+            tone: _BannerTone.success,
+            message: '¡Pago confirmado mediante enlace Pabilo! Tu plan Pro ya está activo.',
+          );
+        });
+        _showSnack('¡Plan Pro activado al instante!');
+      } else {
+        setState(() {
+          _statusBanner = _PayBanner(
+            tone: res.retryable ? _BannerTone.warning : _BannerTone.error,
+            message: res.message.isNotEmpty
+                ? res.message
+                : 'El enlace aún aparece pendiente. Si ya transferiste, pega tu referencia abajo.',
+          );
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusBanner = _PayBanner(
+          tone: _BannerTone.warning,
+          message: e.toString(),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {

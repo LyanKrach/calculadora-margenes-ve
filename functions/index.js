@@ -9,6 +9,7 @@ const {
   getProPaymentConfigPayload,
   createProCheckout,
   verifyProPayment,
+  handlePabiloWebhook,
 } = require("./pro-payments");
 
 if (!admin.apps.length) {
@@ -43,6 +44,8 @@ function readRuntimeSecrets() {
     binanceUserBankId:
       PABILO_BINANCE_USER_BANK_ID.value() || process.env.PABILO_BINANCE_USER_BANK_ID || "",
     baseUrl: process.env.PABILO_BASE_URL || "",
+    webhookSecret: process.env.PABILO_WEBHOOK_SECRET || "",
+    webhookUrl: process.env.PABILO_WEBHOOK_URL || "",
   };
 }
 
@@ -318,7 +321,44 @@ exports.verifyProPayment = functions.https.onRequest(
         db,
         uid: user.uid,
         orderId: body.orderId,
-        rawReference: body.reference,
+        rawReference: body.reference || "",
+        paymentDate: body.paymentDate || null,
+        runtimeSecrets: readRuntimeSecrets(),
+      });
+      return res.status(result.httpStatus || 200).json(result);
+    } catch (err) {
+      return sendPaymentError(res, err);
+    }
+  },
+);
+
+/**
+ * Webhook oficial de Pabilo para enlaces de pago (`link.paid`, etc.).
+ * Reconsulta SIEMPRE `GET /paymentlink/{id}/info` antes de activar Pro.
+ */
+exports.pabiloWebhook = functions.https.onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID, PABILO_BINANCE_USER_BANK_ID],
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      return res.status(405).json({ ok: false, message: "Método no permitido. Usa POST." });
+    }
+    try {
+      const db = admin.firestore();
+      const parsedBody =
+        req.body && typeof req.body === "object"
+          ? req.body
+          : typeof req.body === "string"
+            ? JSON.parse(req.body || "{}")
+            : {};
+      const result = await handlePabiloWebhook({
+        db,
+        rawBody: req.rawBody,
+        parsedBody,
+        headers: req.headers || {},
         runtimeSecrets: readRuntimeSecrets(),
       });
       return res.status(result.httpStatus || 200).json(result);

@@ -1,15 +1,17 @@
 'use strict';
 
+const crypto = require('crypto');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { verifyPayment, normalizeReference } = require('../pabilo');
+const { verifyPayment, normalizeReference, extractPaymentPayload } = require('../pabilo');
 const {
   PRO_PLANS,
   checkAmount,
   computeSubscriptionDates,
   createProCheckout,
   verifyProPayment,
+  handlePabiloWebhook,
   checkRateLimit,
   getProPaymentConfigPayload,
 } = require('../pro-payments');
@@ -219,9 +221,9 @@ test('computeSubscriptionDates extiende desde el vencimiento activo actual cuand
   assert.equal(new Date(endDate).getTime(), now + 40 * 86_400_000);
 });
 
-test('verifyPayment ejecuta búsqueda en 2 pasos (con monto -> sin monto) y rechaza monto ilegible', async () => {
+test('verifyPayment envía amount=0 GENERIC + fecha_pago primero (respaldo con monto si 404) y rechaza monto ilegible', async () => {
   const mockFetch = makeMockFetch([
-    () => ({ status: 404, body: { message: 'not found for exact amount' } }),
+    () => ({ status: 404, body: { error: 'PAYMENT_NOT_FOUND', message: 'not found with amount 0' } }),
     () => ({ status: 200, body: { is_new: true, data: { date: '2026-11-11' } } }),
   ]);
 
@@ -230,14 +232,68 @@ test('verifyPayment ejecuta búsqueda en 2 pasos (con monto -> sin monto) y rech
     userBankId: '777',
     bankReference: '123456',
     amount: 1794.22,
+    nowMs: Date.UTC(2026, 10, 11, 16, 0, 0),
     fetchImpl: mockFetch,
   });
 
   assert.equal(mockFetch.calls.length, 2);
-  assert.equal(mockFetch.calls[0].body.amount, 1794.22);
-  assert.equal('amount' in mockFetch.calls[1].body, false);
+  assert.equal(mockFetch.calls[0].body.amount, 0);
+  assert.equal(mockFetch.calls[0].body.movement_type, 'GENERIC');
+  assert.equal(mockFetch.calls[0].body.fecha_pago, '2026-11-11');
+  assert.equal(mockFetch.calls[1].body.amount, 1794.22);
   assert.equal(res.unreadableAmount, true);
   assert.equal(res.reportedAmount, null);
+});
+
+test('verifyPayment reconoce formato raíz is_new=true en 1 sola llamada (sin doble POST)', async () => {
+  const mockFetch = makeMockFetch([
+    () => ({
+      status: 200,
+      body: {
+        user_bank_payment: {
+          id: 'ubp_live_1',
+          bank_reference_id: '00445566',
+          amount: 1794.22,
+          user_bank_id: '6a708dc68898c1a06401a3bc',
+          status: 'verified',
+          created_at: '2026-11-11T16:40:44.000Z',
+        },
+        payment_date: '2026-11-11',
+        is_new: true,
+        credit_cost: 1,
+      },
+    }),
+  ]);
+
+  const res = await verifyPayment({
+    apiKey: 'secret',
+    userBankId: '6a708dc68898c1a06401a3bc',
+    bankReference: '00445566',
+    amount: 1794.22,
+    nowMs: Date.UTC(2026, 10, 11, 16, 40, 0),
+    fetchImpl: mockFetch,
+  });
+
+  assert.equal(mockFetch.calls.length, 1);
+  assert.equal(res.found, true);
+  assert.equal(res.isNew, true);
+  assert.equal(res.creditCost, 1);
+  assert.equal(res.reportedAmount, 1794.22);
+  assert.equal(res.paymentDate, '2026-11-11');
+
+  const wrapped = extractPaymentPayload({
+    data: {
+      credit_cost: 0,
+      is_new: false,
+      user_bank_payment: { id: 'ubp_2', bank_reference_id: '67890', amount: '1.794,22', status: 'paid' },
+      payment_date: '2026-11-11',
+    },
+    message: 'payment confirmed',
+  });
+  assert.equal(wrapped.hasMovement, true);
+  assert.equal(wrapped.isNew, false);
+  assert.equal(wrapped.creditCost, 0);
+  assert.equal(wrapped.reportedAmount, 1794.22);
 });
 
 test('verifyPayment detecta user_bank not found inmediatamente sin retry', async () => {
@@ -269,6 +325,7 @@ test('flujo completo createProCheckout + verifyProPayment activa Pro al instante
     email: 'vendedor@ejemplo.com',
     planId: 'monthly',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_exact_1',
@@ -316,6 +373,7 @@ test('abono parcial mantiene orden abierta y un segundo pago por la diferencia a
     uid: 'user_partial',
     planId: 'monthly',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     nowMs: now,
@@ -381,6 +439,7 @@ test('reconciliación tras timeout permite is_new=false para la misma orden y re
     uid: 'user_retry',
     planId: 'annual',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_retry_1',
@@ -419,6 +478,7 @@ test('reconciliación tras timeout permite is_new=false para la misma orden y re
     uid: 'user_thief',
     planId: 'annual',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch2,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_thief_1',
@@ -452,6 +512,7 @@ test('referencia is_new=false sin error previo en la orden se rechaza inclusive 
     uid: 'user_reuse',
     planId: 'monthly',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_reuse_1',
@@ -492,6 +553,7 @@ test('Binance Pay / USDT limpia referencia alfanumérica y asigna provider pabil
     uid: 'user_binance',
     planId: 'annual',
     methodId: 'usdt',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_bin_1',
@@ -565,6 +627,7 @@ test('planes quarterly ($4.99) y semiannual ($7.99) crean orden y verifican con 
     uid: 'u_q',
     planId: 'quarterly',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_q_1',
@@ -586,6 +649,7 @@ test('planes quarterly ($4.99) y semiannual ($7.99) crean orden y verifican con 
     uid: 'u_s',
     planId: 'semiannual',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_s_1',
@@ -632,6 +696,7 @@ test('configuración pública por defecto expone BDV 0102 y Binance Pay ID 91694
     uid: 'u_bp_route',
     planId: 'monthly',
     methodId: 'usdt',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_bp_route',
@@ -653,6 +718,7 @@ test('configuración pública por defecto expone BDV 0102 y Binance Pay ID 91694
     uid: 'u_pm_route',
     planId: 'monthly',
     methodId: 'pago_movil',
+    createLink: false,
     fetchImpl: mockFetch,
     env: TEST_ENV,
     orderIdGenerator: () => 'ord_pm_route',
@@ -668,6 +734,364 @@ test('configuración pública por defecto expone BDV 0102 y Binance Pay ID 91694
   assert.equal(pmRes.ok, true);
   assert.equal(pmRes.subscription.provider, 'pabilo_bdv');
   assert.ok(mockFetch.calls[4].url.includes('/userbankpayment/777/betaserio'));
+});
+
+test('enlace de pago Pabilo + is_new=false activa Pro por GET /paymentlink/{id}/info sin doble activación', async () => {
+  const db = createMemoryFirestore();
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({
+      status: 200,
+      body: {
+        paymentlink: {
+          id: 'pl_test_123',
+          url: 'https://pabilo.app/pay/pl_test_123',
+          status: 'pending',
+          amount: 1791,
+          currency: 'VEF',
+        },
+      },
+    }),
+    // Betaserio devuelve is_new: false porque Pabilo ya registró el pago al usar el enlace
+    () => ({
+      status: 200,
+      body: {
+        data: {
+          credit_cost: 0,
+          is_new: false,
+          user_bank_payment: {
+            id: 'ubp_link_1',
+            bank_reference_id: '77889900',
+            amount: 1791,
+            status: 'paid',
+          },
+          payment_date: '2026-11-11',
+        },
+      },
+    }),
+    // GET /paymentlink/pl_test_123/info confirma el estado real paid de ESTE pedido
+    () => ({
+      status: 200,
+      body: {
+        data: {
+          payment_link: { id: 'pl_test_123', status: 'paid', amount: 1791 },
+          user_bank_payment: { id: 'ubp_link_1', bank_reference_id: '77889900', amount: 1791, status: 'paid' },
+        },
+      },
+    }),
+  ]);
+
+  const checkout = await createProCheckout({
+    db,
+    uid: 'u_link',
+    email: 'link@ejemplo.com',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: true,
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    orderIdGenerator: () => 'ord_link_1',
+  });
+
+  assert.equal(checkout.order.paymentLinkId, 'pl_test_123');
+  assert.equal(checkout.order.paymentLinkUrl, 'https://pabilo.app/pay/pl_test_123');
+
+  const verify = await verifyProPayment({
+    db,
+    uid: 'u_link',
+    orderId: 'ord_link_1',
+    rawReference: '77889900',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+
+  assert.equal(verify.ok, true);
+  assert.equal(verify.code, 'ACTIVATED');
+  assert.equal(verify.subscription.activatedBy, 'pabilo_link');
+  assert.equal(verify.subscription.paymentRef, '77889900');
+
+  // Reintento sobre la misma orden devuelve ALREADY_ACTIVATED sin activar dos veces
+  const repeat = await verifyProPayment({
+    db,
+    uid: 'u_link',
+    orderId: 'ord_link_1',
+    rawReference: '77889900',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+  assert.equal(repeat.ok, true);
+  assert.equal(repeat.code, 'ALREADY_ACTIVATED');
+});
+
+test('webhook link.paid valida HMAC, reconsulta GET /paymentlink/{id}/info y no activa si sigue pending', async () => {
+  const db = createMemoryFirestore();
+  const secretEnv = { ...TEST_ENV, PABILO_WEBHOOK_SECRET: 'whsec_test_123' };
+
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({
+      status: 200,
+      body: {
+        paymentlink: { id: 'pl_wh_1', url: 'https://pabilo.app/pay/pl_wh_1', status: 'pending' },
+      },
+    }),
+    // Intento webhook 1: Pabilo /info dice pending aunque el body diga paid -> NO activar
+    () => ({
+      status: 200,
+      body: { data: { payment_link: { id: 'pl_wh_1', status: 'pending', amount: 1791 } } },
+    }),
+    // Intento webhook 2: Pabilo /info confirma paid -> ACTIVAR Pro
+    () => ({
+      status: 200,
+      body: {
+        data: {
+          payment_link: { id: 'pl_wh_1', status: 'paid', amount: 1791 },
+          user_bank_payment: { bank_reference_id: '99112233', amount: 1791, status: 'paid' },
+        },
+      },
+    }),
+  ]);
+
+  await createProCheckout({
+    db,
+    uid: 'u_wh',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: true,
+    fetchImpl: mockFetch,
+    env: secretEnv,
+    orderIdGenerator: () => 'ord_wh_1',
+  });
+
+  const payload = {
+    eventType: 'link.paid',
+    eventId: 'evt_1',
+    data: {
+      payment_link_id: 'pl_wh_1',
+      user_bank_payment: { bank_reference_id: '99112233', amount: 1791, status: 'paid' },
+    },
+  };
+  const rawBody = Buffer.from(JSON.stringify(payload), 'utf8');
+  const validSig = crypto.createHmac('sha256', 'whsec_test_123').update(rawBody).digest('hex');
+
+  const badSig = await handlePabiloWebhook({
+    db,
+    rawBody,
+    parsedBody: payload,
+    headers: { 'x-pabilo-signature': 'invalid_sig' },
+    fetchImpl: mockFetch,
+    env: secretEnv,
+  });
+  assert.equal(badSig.httpStatus, 401);
+  assert.equal(badSig.code, 'INVALID_SIGNATURE');
+
+  const pendingCheck = await handlePabiloWebhook({
+    db,
+    rawBody,
+    parsedBody: payload,
+    headers: { 'x-pabilo-signature': validSig },
+    fetchImpl: mockFetch,
+    env: secretEnv,
+  });
+  assert.equal(pendingCheck.code, 'LINK_NOT_PAID');
+  const subBefore = await db.collection('users').doc('u_wh').collection('subscription').doc('current').get();
+  assert.equal(subBefore.exists, false);
+
+  const paidCheck = await handlePabiloWebhook({
+    db,
+    rawBody,
+    parsedBody: payload,
+    headers: { 'x-pabilo-signature': validSig },
+    fetchImpl: mockFetch,
+    env: secretEnv,
+  });
+  assert.equal(paidCheck.code, 'ACTIVATED');
+  assert.equal(paidCheck.subscription.activatedBy, 'pabilo_webhook');
+  assert.equal(paidCheck.subscription.paymentRef, '99112233');
+
+  // Reenvío del webhook es idempotente
+  const duplicateWh = await handlePabiloWebhook({
+    db,
+    rawBody,
+    parsedBody: payload,
+    headers: { 'x-pabilo-signature': validSig },
+    fetchImpl: mockFetch,
+    env: secretEnv,
+  });
+  assert.equal(duplicateWh.code, 'ALREADY_ACTIVATED');
+});
+
+test('reconciliación de orden afectada (reconcileBugAllow) permite 1 sola activación con is_new=false incluso desde orden nueva del mismo usuario', async () => {
+  const now = Date.UTC(2026, 10, 11, 17, 40, 0);
+  const db = createMemoryFirestore({
+    'proOrders/pro_208419d730a040f2': {
+      id: 'pro_208419d730a040f2',
+      uid: 'uid_real_user',
+      plan: 'monthly',
+      method: 'pago_movil',
+      currency: 'BS',
+      expectedTotal: 1794.22,
+      paidAmount: 0,
+      remainingAmount: 1794.22,
+      status: 'awaiting_payment',
+      attempts: 0,
+      reconcileBugAllow: true,
+      expiresAt: new Date(now + 3600_000).toISOString(),
+    },
+  });
+
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 901.62, date: '2026-11-11' } } }),
+    () => ({
+      status: 200,
+      body: {
+        data: {
+          is_new: false,
+          credit_cost: 0,
+          user_bank_payment: { bank_reference_id: '00998877', amount: 1794.22, status: 'paid' },
+          payment_date: '2026-11-11',
+        },
+      },
+    }),
+  ]);
+
+  await createProCheckout({
+    db,
+    uid: 'uid_real_user',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: false,
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    nowMs: now,
+    orderIdGenerator: () => 'ord_new_after_reload',
+  });
+
+  const res = await verifyProPayment({
+    db,
+    uid: 'uid_real_user',
+    orderId: 'ord_new_after_reload',
+    rawReference: '00998877',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    nowMs: now + 1000,
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.code, 'ACTIVATED');
+  assert.equal(res.reconciledDuplicate, true);
+  assert.equal(res.subscription.paymentRef, '00998877');
+
+  const oldSnap = await db.collection('proOrders').doc('pro_208419d730a040f2').get();
+  assert.equal(oldSnap.data().status, 'superseded');
+  assert.equal(oldSnap.data().supersededByOrderId, 'ord_new_after_reload');
+
+  // Ninguna tercera orden puede volver a usar 00998877
+  const mockFetch2 = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 901.62, date: '2026-11-11' } } }),
+  ]);
+  await createProCheckout({
+    db,
+    uid: 'uid_other',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: false,
+    fetchImpl: mockFetch2,
+    env: TEST_ENV,
+    nowMs: now + 2000,
+    orderIdGenerator: () => 'ord_attacker',
+  });
+  await assert.rejects(
+    () =>
+      verifyProPayment({
+        db,
+        uid: 'uid_other',
+        orderId: 'ord_attacker',
+        rawReference: '00998877',
+        fetchImpl: mockFetch2,
+        env: TEST_ENV,
+        nowMs: now + 3000,
+      }),
+    (err) => err.code === 'REFERENCE_ALREADY_USED',
+  );
+});
+
+test('BANK_TEST 67890 activa la 1ra vez (is_new=true), rechaza la 2da (is_new=false) y vence cuando endDate < now', async () => {
+  const now = Date.UTC(2026, 10, 11, 14, 0, 0);
+  const db = createMemoryFirestore();
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({
+      status: 200,
+      body: {
+        user_bank_payment: { id: 'ubp_sandbox_1', bank_reference_id: '67890', amount: 1791, status: 'verified' },
+        payment_date: '2026-11-11',
+        is_new: true,
+        credit_cost: 1,
+      },
+    }),
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+  ]);
+
+  await createProCheckout({
+    db,
+    uid: 'user_sandbox_1',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: false,
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    nowMs: now,
+    orderIdGenerator: () => 'ord_sb_1',
+  });
+
+  const v1 = await verifyProPayment({
+    db,
+    uid: 'user_sandbox_1',
+    orderId: 'ord_sb_1',
+    rawReference: '67890',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    nowMs: now + 1000,
+  });
+  assert.equal(v1.ok, true);
+  assert.equal(v1.subscription.status, 'active');
+
+  // 2do intento con 67890 rechazado
+  await createProCheckout({
+    db,
+    uid: 'user_sandbox_2',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    createLink: false,
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    nowMs: now + 2000,
+    orderIdGenerator: () => 'ord_sb_2',
+  });
+  await assert.rejects(
+    () =>
+      verifyProPayment({
+        db,
+        uid: 'user_sandbox_2',
+        orderId: 'ord_sb_2',
+        rawReference: '67890',
+        fetchImpl: mockFetch,
+        env: TEST_ENV,
+        nowMs: now + 3000,
+      }),
+    (err) => err.code === 'REFERENCE_ALREADY_USED',
+  );
+
+  // Verificación de vencimiento: tras pasar los 30 días, computeSubscriptionDates inicia ciclo nuevo sin extender del pasado
+  const expiredSub = v1.subscription;
+  const afterExpiryMs = Date.parse(expiredSub.endDate) + 3600_000;
+  const renewed = computeSubscriptionDates({
+    existingSub: expiredSub,
+    durationDays: 30,
+    nowMs: afterExpiryMs,
+  });
+  assert.equal(renewed.startDate, new Date(afterExpiryMs).toISOString());
 });
 
 
