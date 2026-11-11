@@ -1,0 +1,457 @@
+/// Planes y modelos compartidos para suscripciones Pro y verificación Pabilo.
+enum ProPlanId {
+  monthly,
+  annual;
+
+  String get id => name;
+
+  String get displayName =>
+      this == ProPlanId.annual ? 'Pro Anual' : 'Pro Mensual';
+
+  double get priceUsd => this == ProPlanId.annual ? 15.0 : 1.99;
+
+  int get durationDays => this == ProPlanId.annual ? 365 : 30;
+
+  int get savePercent => this == ProPlanId.annual ? 37 : 0;
+
+  static ProPlanId? tryParse(String? raw) {
+    if (raw == 'annual') return ProPlanId.annual;
+    if (raw == 'monthly') return ProPlanId.monthly;
+    return null;
+  }
+}
+
+enum ProPaymentMethod {
+  pagoMovil,
+  usdt;
+
+  String get id => this == ProPaymentMethod.usdt ? 'usdt' : 'pago_movil';
+
+  String get label =>
+      this == ProPaymentMethod.usdt ? 'USDT / Binance Pay' : 'Pago Móvil (BDV)';
+
+  String get currency => this == ProPaymentMethod.usdt ? 'USD' : 'BS';
+
+  bool get allowLetters => this == ProPaymentMethod.usdt;
+
+  int get minRefLength => this == ProPaymentMethod.usdt ? 6 : 4;
+
+  static ProPaymentMethod fromId(String? raw) {
+    return raw == 'usdt'
+        ? ProPaymentMethod.usdt
+        : ProPaymentMethod.pagoMovil;
+  }
+}
+
+enum SubscriptionStatus {
+  free,
+  active,
+  expired,
+  canceled,
+}
+
+double _round2(double v) => (v * 100).roundToDouble() / 100;
+
+DateTime? _parseIso(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString().trim();
+  if (s.isEmpty) return null;
+  return DateTime.tryParse(s);
+}
+
+double? _toDouble(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is num) return raw.isFinite ? raw.toDouble() : null;
+  final parsed = double.tryParse(raw.toString().trim().replaceAll(',', '.'));
+  return (parsed != null && parsed.isFinite) ? parsed : null;
+}
+
+class SubscriptionState {
+  static const int freeMaxProducts = 10;
+
+  final SubscriptionStatus status;
+  final String? plan;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String? provider;
+  final String? paymentRef;
+  final String? orderId;
+  final int daysLeft;
+
+  const SubscriptionState({
+    required this.status,
+    this.plan,
+    this.startDate,
+    this.endDate,
+    this.provider,
+    this.paymentRef,
+    this.orderId,
+    required this.daysLeft,
+  });
+
+  const SubscriptionState.free()
+      : status = SubscriptionStatus.free,
+        plan = null,
+        startDate = null,
+        endDate = null,
+        provider = null,
+        paymentRef = null,
+        orderId = null,
+        daysLeft = 0;
+
+  bool get isPro => status == SubscriptionStatus.active;
+
+  static bool canAddProduct({
+    required int currentCount,
+    required bool isPro,
+  }) =>
+      isPro || currentCount < freeMaxProducts;
+
+  static double planBsEstimate(ProPlanId plan, double bcvRate) {
+    if (!bcvRate.isFinite || bcvRate <= 0) return 0;
+    return _round2(plan.priceUsd * bcvRate);
+  }
+
+  factory SubscriptionState.fromJson(
+    Map<String, dynamic>? json, {
+    DateTime? now,
+  }) {
+    if (json == null || json.isEmpty) return const SubscriptionState.free();
+    final refNow = (now ?? DateTime.now()).toUtc();
+    final rawStatus = json['status']?.toString().trim().toLowerCase() ?? '';
+    final plan = json['plan']?.toString().trim();
+    final startDate = _parseIso(json['startDate']);
+    final endDate = _parseIso(json['endDate']);
+    final provider = json['provider']?.toString();
+    final paymentRef = json['paymentRef']?.toString();
+    final orderId = json['orderId']?.toString();
+
+    if (rawStatus == 'active' && endDate != null) {
+      final diffMs = endDate.toUtc().millisecondsSinceEpoch -
+          refNow.millisecondsSinceEpoch;
+      if (diffMs > 0) {
+        final daysLeft = (diffMs / 86400000).ceil().clamp(1, 36500);
+        return SubscriptionState(
+          status: SubscriptionStatus.active,
+          plan: plan,
+          startDate: startDate,
+          endDate: endDate,
+          provider: provider,
+          paymentRef: paymentRef,
+          orderId: orderId,
+          daysLeft: daysLeft,
+        );
+      }
+      return SubscriptionState(
+        status: SubscriptionStatus.expired,
+        plan: plan,
+        startDate: startDate,
+        endDate: endDate,
+        provider: provider,
+        paymentRef: paymentRef,
+        orderId: orderId,
+        daysLeft: 0,
+      );
+    }
+
+    if (rawStatus == 'canceled') {
+      return SubscriptionState(
+        status: SubscriptionStatus.canceled,
+        plan: plan,
+        startDate: startDate,
+        endDate: endDate,
+        provider: provider,
+        paymentRef: paymentRef,
+        orderId: orderId,
+        daysLeft: 0,
+      );
+    }
+
+    if (rawStatus == 'expired' || endDate != null) {
+      return SubscriptionState(
+        status: SubscriptionStatus.expired,
+        plan: plan,
+        startDate: startDate,
+        endDate: endDate,
+        provider: provider,
+        paymentRef: paymentRef,
+        orderId: orderId,
+        daysLeft: 0,
+      );
+    }
+
+    return const SubscriptionState.free();
+  }
+
+  /// Recalcula si la suscripción venció en el instante actual.
+  SubscriptionState evaluateAt(DateTime now) {
+    if (status != SubscriptionStatus.active || endDate == null) return this;
+    final diffMs = endDate!.toUtc().millisecondsSinceEpoch -
+        now.toUtc().millisecondsSinceEpoch;
+    if (diffMs <= 0) {
+      return SubscriptionState(
+        status: SubscriptionStatus.expired,
+        plan: plan,
+        startDate: startDate,
+        endDate: endDate,
+        provider: provider,
+        paymentRef: paymentRef,
+        orderId: orderId,
+        daysLeft: 0,
+      );
+    }
+    return SubscriptionState(
+      status: SubscriptionStatus.active,
+      plan: plan,
+      startDate: startDate,
+      endDate: endDate,
+      provider: provider,
+      paymentRef: paymentRef,
+      orderId: orderId,
+      daysLeft: (diffMs / 86400000).ceil().clamp(1, 36500),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'v': 1,
+        'status': status.name,
+        if (plan != null) 'plan': plan,
+        if (startDate != null) 'startDate': startDate!.toUtc().toIso8601String(),
+        if (endDate != null) 'endDate': endDate!.toUtc().toIso8601String(),
+        if (provider != null) 'provider': provider,
+        if (paymentRef != null) 'paymentRef': paymentRef,
+        if (orderId != null) 'orderId': orderId,
+      };
+}
+
+class PagoMovilPublicInfo {
+  final String bank;
+  final String cedulaRif;
+  final String phone;
+  final String holder;
+  final bool autoVerify;
+
+  const PagoMovilPublicInfo({
+    this.bank = 'Banco de Venezuela (BDV · 0102)',
+    this.cedulaRif = '',
+    this.phone = '',
+    this.holder = '',
+    this.autoVerify = true,
+  });
+
+  factory PagoMovilPublicInfo.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const PagoMovilPublicInfo();
+    final bank = (json['bank'] ?? json['banco'] ?? '').toString().trim();
+    return PagoMovilPublicInfo(
+      bank: bank.isNotEmpty ? bank : 'Banco de Venezuela (BDV · 0102)',
+      cedulaRif: (json['cedulaRif'] ?? '').toString().trim(),
+      phone: (json['phone'] ?? json['telefono'] ?? '').toString().trim(),
+      holder: (json['holder'] ?? json['titular'] ?? '').toString().trim(),
+      autoVerify: json['autoVerify'] is bool ? json['autoVerify'] as bool : true,
+    );
+  }
+}
+
+class UsdtPublicInfo {
+  final String network;
+  final String binanceId;
+  final String address;
+  final bool autoVerify;
+
+  const UsdtPublicInfo({
+    this.network = 'Binance Pay / USDT (TRC20 o BEP20)',
+    this.binanceId = '',
+    this.address = '',
+    this.autoVerify = false,
+  });
+
+  factory UsdtPublicInfo.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const UsdtPublicInfo();
+    final net = (json['network'] ?? json['red'] ?? '').toString().trim();
+    return UsdtPublicInfo(
+      network: net.isNotEmpty ? net : 'Binance Pay / USDT (TRC20 o BEP20)',
+      binanceId: (json['binanceId'] ?? '').toString().trim(),
+      address: (json['address'] ?? json['direccion'] ?? '').toString().trim(),
+      autoVerify:
+          json['autoVerify'] is bool ? json['autoVerify'] as bool : false,
+    );
+  }
+}
+
+class ProPaymentConfig {
+  final double? bcvUsd;
+  final String? rateEffectiveDate;
+  final String? rateSource;
+  final PagoMovilPublicInfo pagoMovil;
+  final UsdtPublicInfo usdt;
+  final String supportEmail;
+  final String supportWhatsapp;
+
+  const ProPaymentConfig({
+    this.bcvUsd,
+    this.rateEffectiveDate,
+    this.rateSource,
+    this.pagoMovil = const PagoMovilPublicInfo(),
+    this.usdt = const UsdtPublicInfo(),
+    this.supportEmail = '',
+    this.supportWhatsapp = '',
+  });
+
+  factory ProPaymentConfig.fromJson(Map<String, dynamic> json) {
+    final bcvMap = json['bcvRate'] as Map<String, dynamic>?;
+    final methods = json['methods'] as Map<String, dynamic>?;
+    final sup = json['support'] as Map<String, dynamic>?;
+    return ProPaymentConfig(
+      bcvUsd: bcvMap != null ? _toDouble(bcvMap['usd']) : null,
+      rateEffectiveDate: bcvMap?['effectiveDate']?.toString(),
+      rateSource: bcvMap?['source']?.toString(),
+      pagoMovil: PagoMovilPublicInfo.fromJson(
+        methods?['pago_movil'] as Map<String, dynamic>?,
+      ),
+      usdt: UsdtPublicInfo.fromJson(
+        methods?['usdt'] as Map<String, dynamic>?,
+      ),
+      supportEmail: (sup?['email'] ?? '').toString().trim(),
+      supportWhatsapp: (sup?['whatsapp'] ?? '').toString().trim(),
+    );
+  }
+}
+
+class ProCheckoutOrder {
+  final String id;
+  final ProPlanId plan;
+  final ProPaymentMethod method;
+  final String currency;
+  final double expectedAmountUsd;
+  final double expectedAmountBs;
+  final double expectedTotal;
+  final double paidAmount;
+  final double remainingAmount;
+  final double rateBs;
+  final String rateSource;
+  final String? rateEffectiveDate;
+  final bool autoVerify;
+  final DateTime? expiresAt;
+  final String status;
+
+  const ProCheckoutOrder({
+    required this.id,
+    required this.plan,
+    required this.method,
+    required this.currency,
+    required this.expectedAmountUsd,
+    required this.expectedAmountBs,
+    required this.expectedTotal,
+    required this.paidAmount,
+    required this.remainingAmount,
+    required this.rateBs,
+    required this.rateSource,
+    this.rateEffectiveDate,
+    required this.autoVerify,
+    this.expiresAt,
+    required this.status,
+  });
+
+  bool get isExpired {
+    if (paidAmount > 0 || expiresAt == null) return false;
+    return expiresAt!.isBefore(DateTime.now());
+  }
+
+  ProCheckoutOrder withPartialUpdate({
+    required double paidAmount,
+    required double remainingAmount,
+    DateTime? expiresAt,
+  }) =>
+      ProCheckoutOrder(
+        id: id,
+        plan: plan,
+        method: method,
+        currency: currency,
+        expectedAmountUsd: expectedAmountUsd,
+        expectedAmountBs: expectedAmountBs,
+        expectedTotal: expectedTotal,
+        paidAmount: paidAmount,
+        remainingAmount: remainingAmount,
+        rateBs: rateBs,
+        rateSource: rateSource,
+        rateEffectiveDate: rateEffectiveDate,
+        autoVerify: autoVerify,
+        expiresAt: expiresAt ?? this.expiresAt,
+        status: status,
+      );
+
+  factory ProCheckoutOrder.fromJson(Map<String, dynamic> json) {
+    return ProCheckoutOrder(
+      id: json['id']?.toString() ?? '',
+      plan: ProPlanId.tryParse(json['plan']?.toString()) ?? ProPlanId.monthly,
+      method: ProPaymentMethod.fromId(json['method']?.toString()),
+      currency: json['currency']?.toString() ?? 'BS',
+      expectedAmountUsd: _toDouble(json['expectedAmountUsd']) ?? 0,
+      expectedAmountBs: _toDouble(json['expectedAmountBs']) ?? 0,
+      expectedTotal: _toDouble(json['expectedTotal']) ?? 0,
+      paidAmount: _toDouble(json['paidAmount']) ?? 0,
+      remainingAmount: _toDouble(json['remainingAmount']) ?? 0,
+      rateBs: _toDouble(json['rateBs']) ?? 0,
+      rateSource: json['rateSource']?.toString() ?? '',
+      rateEffectiveDate: json['rateEffectiveDate']?.toString(),
+      autoVerify: json['autoVerify'] == true,
+      expiresAt: _parseIso(json['expiresAt']),
+      status: json['status']?.toString() ?? 'awaiting_payment',
+    );
+  }
+}
+
+class PabiloVerifyResult {
+  final bool ok;
+  final String code;
+  final bool retryable;
+  final bool fallbackManual;
+  final String orderId;
+  final String message;
+  final double? paidAmount;
+  final double? remainingAmount;
+  final double? reportedAmount;
+  final DateTime? expiresAt;
+  final SubscriptionState? subscription;
+
+  const PabiloVerifyResult({
+    required this.ok,
+    required this.code,
+    required this.retryable,
+    required this.fallbackManual,
+    required this.orderId,
+    required this.message,
+    this.paidAmount,
+    this.remainingAmount,
+    this.reportedAmount,
+    this.expiresAt,
+    this.subscription,
+  });
+
+  bool get isActivated =>
+      ok && (code == 'ACTIVATED' || code == 'ALREADY_ACTIVATED');
+
+  bool get isPartial => code == 'PARTIAL_PAYMENT';
+
+  factory PabiloVerifyResult.fromJson(
+    Map<String, dynamic> json, {
+    String fallbackOrderId = '',
+  }) {
+    final subMap = json['subscription'] as Map<String, dynamic>?;
+    return PabiloVerifyResult(
+      ok: json['ok'] == true,
+      code: json['code']?.toString() ?? '',
+      retryable: json['retryable'] == true,
+      fallbackManual: json['fallbackManual'] == true,
+      orderId: json['orderId']?.toString() ?? fallbackOrderId,
+      message: json['message']?.toString() ?? '',
+      paidAmount: _toDouble(json['paidAmount']),
+      remainingAmount: _toDouble(json['remainingAmount']),
+      reportedAmount: _toDouble(json['reportedAmount']),
+      expiresAt: _parseIso(json['expiresAt']),
+      subscription:
+          subMap != null ? SubscriptionState.fromJson(subMap) : null,
+    );
+  }
+}
+

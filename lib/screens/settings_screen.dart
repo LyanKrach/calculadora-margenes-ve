@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../models/seller_profile.dart';
+import '../models/subscription_state.dart';
 import '../services/auth_service.dart';
 import '../services/seller_profile_service.dart';
+import '../services/subscription_service.dart';
 import '../services/theme_service.dart';
 import 'auth_screen.dart';
+import 'pro_plans_screen.dart';
 import 'seller_profile_screen.dart';
 
 /// Ajustes: Sincronización en la nube, Apariencia (Tema claro/oscuro),
@@ -19,19 +22,37 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _profileService = SellerProfileService();
   final _authService = AuthService();
+  final _subService = SubscriptionService.instance;
   SellerProfile _profile = const SellerProfile.empty();
+  SubscriptionState _subState = const SubscriptionState.free();
 
   @override
   void initState() {
     super.initState();
+    _subService.ensureStarted();
+    _subState = _subService.currentState;
+    _subService.stateNotifier.addListener(_onSubChanged);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _subService.stateNotifier.removeListener(_onSubChanged);
+    super.dispose();
+  }
+
+  void _onSubChanged() {
+    if (!mounted) return;
+    setState(() => _subState = _subService.currentState);
   }
 
   Future<void> _loadData() async {
     final profile = await _profileService.getProfile();
+    await _subService.refreshSubscription();
     if (!mounted) return;
     setState(() {
       _profile = profile;
+      _subState = _subService.currentState;
     });
   }
 
@@ -42,6 +63,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Text(
+            'Suscripción y Planes Pro',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                _subState.isPro ? Icons.workspace_premium : Icons.diamond_outlined,
+                color: _subState.isPro
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+              ),
+              title: Text(
+                _subState.isPro
+                    ? 'Plan Pro Activo (${_subState.plan == 'annual' ? 'Anual' : 'Mensual'})'
+                    : 'Plan Gratis · Pasar a Pro',
+              ),
+              subtitle: Text(
+                _subState.isPro
+                    ? 'Vence en ${_subState.daysLeft} días · Productos y reportes ilimitados'
+                    : 'Desde \$1,99/mes o \$15/año (-37%) · Activación automática con Pabilo',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProPlansScreen()),
+                );
+                await _loadData();
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
           const Text(
             'Cuenta y Sincronización (Firebase)',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),

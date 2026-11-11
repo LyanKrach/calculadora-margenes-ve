@@ -8,6 +8,7 @@ import 'screens/calculator_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/rates_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/subscription_service.dart';
 import 'services/theme_service.dart';
 
 Future<void> main() async {
@@ -21,6 +22,7 @@ Future<void> main() async {
     // la app continúa operando en modo local (SharedPreferences).
   }
 
+  SubscriptionService.instance.ensureStarted();
   await ThemeService.instance.init();
 
   // OBLIGATORIO: sin esto, DateFormat('...', 'es_VE') en la pantalla de

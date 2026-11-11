@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/product_item.dart';
+import '../models/subscription_state.dart';
 import 'auth_service.dart';
 import 'price_list_formatter.dart';
+import 'subscription_service.dart';
 
 /// Servicio de gestión del Catálogo de Productos con respaldo por cuenta
 /// en `Cloud Firestore` (`users/{uid}/products/{productId}`) y caché
@@ -169,6 +171,24 @@ class ProductsService {
       throw StateError(
         'Debes iniciar sesión con tu cuenta de Google o correo para guardar productos en la nube.',
       );
+    }
+
+    // Límite del Plan Gratis: hasta 10 productos nuevos en la nube (Pro ilimitado).
+    // Nunca bloquea editar productos existentes.
+    if (!SubscriptionService.instance.isPro) {
+      final existingSnap =
+          await col.doc(product.id).get().timeout(const Duration(seconds: 8));
+      if (!existingSnap.exists) {
+        final countSnap = await col
+            .limit(SubscriptionState.freeMaxProducts)
+            .get()
+            .timeout(const Duration(seconds: 8));
+        if (countSnap.docs.length >= SubscriptionState.freeMaxProducts) {
+          throw const FreeLimitReachedException(
+            'Alcanzaste el límite de 10 productos del Plan Gratis. Activa Pro para guardar productos ilimitados.',
+          );
+        }
+      }
     }
 
     // Guarda en Cloud Firestore con verificación (no se traga excepciones)

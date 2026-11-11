@@ -54,6 +54,77 @@ rules_version = '2';
 //   - precioExactoBs: number (>= 0) or null
 //   - gananciaBs: number or null
 //
+// Subcollection: users/{userId}/subscription
+// Document ID: 'current' (ACTIVE subscription; read-only for the owner,
+//   written only by an admin custom claim, Admin SDK, or the Firebase Console)
+// Required Fields:
+//   - v: int
+//   - plan: string (in ['monthly', 'annual'])
+//   - status: string (in ['active', 'expired', 'canceled'])
+//   - startDate: string (10..60 chars, ISO-8601)
+//   - endDate: string (10..60 chars, ISO-8601)
+//   - provider: string (1..30 chars, e.g. 'manual', 'pabilo_bdv', 'pabilo_binance')
+// Optional Fields:
+//   - paymentRef: string (<= 100), orderId: string (<= 80), amountUsd: number (>= 0),
+//     paidAmount: number (>= 0), currency: string (in ['BS', 'USD']),
+//     overpaidAlert: bool, activatedBy: string (<= 120), updatedAt: string (<= 60)
+// Document ID: 'pending' (payment reference submitted by the owner, awaiting
+//   admin verification; owner may create/update/delete)
+// Required Fields:
+//   - v: int
+//   - plan: string (in ['monthly', 'annual'])
+//   - method: string (in ['pago_movil', 'usdt'])
+//   - reference: string (4..60 chars)
+//   - amountUsd: number (> 0 and <= 100)
+//   - status: string (must equal 'pending')
+//   - provider: string (must equal 'manual')
+//   - requestedAt: string (10..60 chars, ISO-8601)
+// Optional Fields:
+//   - amountBs: number (>= 0), rateBs: number (>= 0)
+//
+// Subcollection: users/{userId}/settings (owner-only)
+// Document ID: 'profile'
+//   - v: int, businessName: string (0..60), updatedAt: string (10..60)
+// Document ID: 'alerts'
+//   - v: int, gapEnabled: bool, gapThresholdPct: number (0..1000),
+//     rateEnabled: bool, updatedAt: string (10..60)
+//   - Optional (number or null, >= 0): bcvAboveBs, lastSeenBcvUsd
+//   - Optional (string or null, <= 20): lastSeenBcvDate
+//
+// Collection: proOrders
+// Document ID: {orderId} (e.g. 'pro_...')
+//   Server-managed Pabilo checkout orders written strictly by Firebase Admin SDK
+//   in Cloud Functions (`functions/pro-payments.js`). Non-anonymous owners may
+//   read/query only their own orders (`resource.data.uid == request.auth.uid`);
+//   all client writes are denied.
+// Fields:
+//   - v: int, id: string, uid: string, email: string, plan: string,
+//     planName: string, durationDays: int, method: string, currency: string,
+//     expectedAmountUsd: number, expectedAmountBs: number, expectedTotal: number,
+//     paidAmount: number, remainingAmount: number, partials: list,
+//     partialRefs: list, rateBs: number, rateSource: string,
+//     rateEffectiveDate: string or null, status: string, attempts: int,
+//     maxAttempts: int, autoVerify: bool, lastAttemptedReference: string or null,
+//     providerErrorAt: string or null, retriableRefs: list,
+//     payment: map or null, paidAt: string (optional), expiresAt: string,
+//     createdAt: string, updatedAt: string
+//
+// Collection: paymentRefs
+// Document ID: {refId} (e.g. 'pm_<digits>' or 'bp_<ref>')
+//   Server-only transactional double-spend lock (Admin SDK only).
+//   All client reads and writes are denied.
+//
+// Collection: rateLimits
+// Document ID: {docId} (e.g. '<name>__<key>__<bucket>')
+//   Server-only rate limiter buckets (Admin SDK only).
+//   All client reads and writes are denied.
+//
+// Collection: config
+// Document ID: {docId} (e.g. 'proPayments', 'pabiloPrivate')
+//   Server-only payment config & private Pabilo bank IDs (Admin SDK only;
+//   safe public fields are exposed via Cloud Function `getProPaymentConfig`).
+//   All client reads and writes are denied.
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -65,6 +136,12 @@ service cloud.firestore {
 
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isNonAnonymous() {
+      return isAuthenticated() &&
+        (!('firebase' in request.auth.token) ||
+         request.auth.token.firebase.get('sign_in_provider', '') != 'anonymous');
     }
 
     function isOwner(userId) {
@@ -246,6 +323,91 @@ service cloud.firestore {
         validStringLength('timestamp', 1, 60);
     }
 
+    // ---------------------------------------------------------------
+    // Subscription / Pro settings validators
+    // ---------------------------------------------------------------
+
+    function isStr(data, field, minLen, maxLen) {
+      return field in data && data[field] is string &&
+        data[field].size() >= minLen && data[field].size() <= maxLen;
+    }
+
+    function isOptStr(data, field, maxLen) {
+      return !(field in data) || data[field] == null ||
+        (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isOptNonNegNum(data, field) {
+      return !(field in data) || data[field] == null ||
+        (data[field] is number && data[field] >= 0);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.get('admin', false) == true;
+    }
+
+    function isValidActiveSubscription(data) {
+      return data.keys().hasAll(['v', 'plan', 'status', 'startDate', 'endDate', 'provider']) &&
+        data.keys().hasOnly(['v', 'plan', 'status', 'startDate', 'endDate', 'provider',
+          'paymentRef', 'orderId', 'amountUsd', 'paidAmount', 'currency',
+          'overpaidAlert', 'activatedBy', 'updatedAt']) &&
+        data.v is int &&
+        data.plan is string && data.plan in ['monthly', 'annual'] &&
+        data.status is string && data.status in ['active', 'expired', 'canceled'] &&
+        isStr(data, 'startDate', 10, 60) &&
+        isStr(data, 'endDate', 10, 60) &&
+        isStr(data, 'provider', 1, 30) &&
+        isOptStr(data, 'paymentRef', 100) &&
+        isOptStr(data, 'orderId', 80) &&
+        isOptNonNegNum(data, 'amountUsd') &&
+        isOptNonNegNum(data, 'paidAmount') &&
+        (!('currency' in data) || data.currency == null ||
+          (data.currency is string && data.currency in ['BS', 'USD'])) &&
+        (!('overpaidAlert' in data) || data.overpaidAlert == null ||
+          data.overpaidAlert is bool) &&
+        isOptStr(data, 'activatedBy', 120) &&
+        isOptStr(data, 'updatedAt', 60);
+    }
+
+    function isValidPendingSubscription(data) {
+      return data.keys().hasAll(['v', 'plan', 'method', 'reference', 'amountUsd',
+          'status', 'provider', 'requestedAt']) &&
+        data.keys().hasOnly(['v', 'plan', 'method', 'reference', 'amountUsd', 'amountBs',
+          'rateBs', 'status', 'provider', 'requestedAt']) &&
+        data.v is int &&
+        data.plan is string && data.plan in ['monthly', 'annual'] &&
+        data.method is string && data.method in ['pago_movil', 'usdt'] &&
+        isStr(data, 'reference', 4, 60) &&
+        data.amountUsd is number && data.amountUsd > 0 && data.amountUsd <= 100 &&
+        data.status is string && data.status == 'pending' &&
+        data.provider is string && data.provider == 'manual' &&
+        isStr(data, 'requestedAt', 10, 60) &&
+        isOptNonNegNum(data, 'amountBs') &&
+        isOptNonNegNum(data, 'rateBs');
+    }
+
+    function isValidProfileSettings(data) {
+      return data.keys().hasAll(['v', 'businessName', 'updatedAt']) &&
+        data.keys().hasOnly(['v', 'businessName', 'updatedAt']) &&
+        data.v is int &&
+        isStr(data, 'businessName', 0, 60) &&
+        isStr(data, 'updatedAt', 10, 60);
+    }
+
+    function isValidAlertsSettings(data) {
+      return data.keys().hasAll(['v', 'gapEnabled', 'gapThresholdPct', 'rateEnabled', 'updatedAt']) &&
+        data.keys().hasOnly(['v', 'gapEnabled', 'gapThresholdPct', 'rateEnabled', 'bcvAboveBs',
+          'lastSeenBcvDate', 'lastSeenBcvUsd', 'updatedAt']) &&
+        data.v is int &&
+        data.gapEnabled is bool &&
+        data.gapThresholdPct is number && data.gapThresholdPct >= 0 && data.gapThresholdPct <= 1000 &&
+        data.rateEnabled is bool &&
+        isOptNonNegNum(data, 'bcvAboveBs') &&
+        isOptNonNegNum(data, 'lastSeenBcvUsd') &&
+        isOptStr(data, 'lastSeenBcvDate', 20) &&
+        isStr(data, 'updatedAt', 10, 60);
+    }
+
     // ===============================================================
     // User-Scoped Data Rules
     // ===============================================================
@@ -270,6 +432,54 @@ service cloud.firestore {
           isValidHistoryEntry(request.resource.data) &&
           request.resource.data.id == resource.data.id;
       }
+
+      match /subscription/{docId} {
+        // Active subscription: owner read-only; only admin claim may write.
+        allow get: if isOwner(userId) && docId in ['current', 'pending'];
+        allow create, update: if docId == 'current' && isAdmin() &&
+          isValidActiveSubscription(request.resource.data);
+        allow delete: if (docId == 'current' && isAdmin()) ||
+          (docId == 'pending' && isOwner(userId));
+
+        // Pending payment reference: owner create/update/delete with strict validation.
+        allow create, update: if docId == 'pending' && isOwner(userId) &&
+          isValidPendingSubscription(request.resource.data);
+      }
+
+      match /settings/{docId} {
+        allow get: if isOwner(userId) && docId in ['profile', 'alerts'];
+        allow create, update: if isOwner(userId) && (
+          (docId == 'profile' && isValidProfileSettings(request.resource.data)) ||
+          (docId == 'alerts' && isValidAlertsSettings(request.resource.data)));
+        allow delete: if isOwner(userId) && docId in ['profile', 'alerts'];
+      }
+    }
+
+    // ===============================================================
+    // Pabilo Pro Checkout & Server-Only Collections (Admin SDK Only)
+    // ===============================================================
+
+    match /proOrders/{orderId} {
+      // Non-anonymous owners may read or query their own checkout orders.
+      // Clients may never create, update, or delete checkout orders.
+      allow get, list: if isNonAnonymous() && resource.data.uid == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /paymentRefs/{refId} {
+      // Server-only transactional double-spend lock.
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{docId} {
+      // Server-only rate limiter buckets.
+      allow read, write: if false;
+    }
+
+    match /config/{docId} {
+      // Server-only config (config/proPayments, config/pabiloPrivate);
+      // safe fields are exposed via Cloud Function getProPaymentConfig.
+      allow read, write: if false;
     }
 
     // ===============================================================

@@ -10,15 +10,18 @@ import '../models/margin_mode.dart';
 import '../models/product_item.dart';
 import '../models/rate.dart';
 import '../models/seller_profile.dart';
+import '../models/subscription_state.dart';
 import '../services/auth_service.dart';
 import '../services/history_service.dart';
 import '../services/price_list_formatter.dart';
 import '../services/products_service.dart';
 import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
+import '../services/subscription_service.dart';
 import '../utils/format.dart';
 import '../widgets/category_picker_field.dart';
 import 'auth_screen.dart';
+import 'pro_plans_screen.dart';
 
 /// Pantalla de Catálogo de Productos (con precios en Bs calculados al instante)
 /// e Historial de Productos Calculados, respaldados localmente y en Firestore.
@@ -35,6 +38,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   final _ratesService = RatesService();
   final _profileService = SellerProfileService();
   final _authService = AuthService();
+  final _subService = SubscriptionService.instance;
 
   final _searchCtrl = TextEditingController();
 
@@ -42,6 +46,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<HistoryEntry> _history = const [];
   Map<RateSource, Rate> _ratesMap = {};
   SellerProfile? _profile;
+  SubscriptionState _subState = const SubscriptionState.free();
   double _globalCustomRate = 0;
   RateSource? _overrideSource;
   bool _loading = true;
@@ -51,6 +56,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override
   void initState() {
     super.initState();
+    _subService.ensureStarted();
+    _subState = _subService.currentState;
+    _subService.stateNotifier.addListener(_onSubChanged);
     _subscribeProducts();
     _refreshAll();
     _searchCtrl.addListener(() => setState(() {}));
@@ -59,6 +67,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       _subscribeProducts();
       _refreshAll();
     });
+  }
+
+  void _onSubChanged() {
+    if (!mounted) return;
+    setState(() => _subState = _subService.currentState);
   }
 
   void _subscribeProducts() {
@@ -78,6 +91,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   void dispose() {
+    _subService.stateNotifier.removeListener(_onSubChanged);
     _productsSub?.cancel();
     _authSub?.cancel();
     _searchCtrl.dispose();
@@ -253,6 +267,91 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
+  Future<void> _openProPlans() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProPlansScreen()),
+    );
+    await _subService.refreshSubscription();
+    if (!mounted) return;
+    setState(() => _subState = _subService.currentState);
+  }
+
+  Future<void> _showProLimitDialog() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.workspace_premium, color: Colors.amber),
+            SizedBox(width: 8),
+            Expanded(child: Text('Límite del Plan Gratis')),
+          ],
+        ),
+        content: const Text(
+          'El Plan Gratis permite guardar hasta 10 productos en la nube (calculadora y tasas siguen gratis siempre).\n\n'
+          'Actualiza a Pro (\$1,99/mes o \$15/año) con verificación automática Pabilo para guardar productos ilimitados.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Ahora no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Ver Planes Pro'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      await _openProPlans();
+    }
+  }
+
+  Widget _buildPlanQuotaBanner() {
+    if (!AuthService.isFirebaseInitialized || !_authService.isSignedIn) {
+      return const SizedBox.shrink();
+    }
+    final isPro = _subState.isPro;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isPro ? Icons.workspace_premium : Icons.inventory_2_outlined,
+            size: 16,
+            color: isPro ? Theme.of(context).colorScheme.primary : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isPro
+                  ? 'Plan Pro activo · ${_products.length} productos (ilimitados)'
+                  : 'Plan Gratis: ${_products.length} / ${SubscriptionState.freeMaxProducts} productos guardados',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: _openProPlans,
+            child: Text(isPro ? 'Mi Pro' : 'Pasar a Pro'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openProductForm({ProductItem? existing}) async {
     if (AuthService.isFirebaseInitialized && !_authService.isSignedIn) {
       final shouldLogin = await showDialog<bool>(
@@ -295,6 +394,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     if (!mounted) return;
 
+    if (existing == null &&
+        AuthService.isFirebaseInitialized &&
+        !SubscriptionState.canAddProduct(
+          currentCount: _products.length,
+          isPro: _subState.isPro,
+        )) {
+      await _showProLimitDialog();
+      return;
+    }
+
     final categories = extractUniqueCategories(_products);
     final saved = await showModalBottomSheet<ProductItem>(
       context: context,
@@ -322,6 +431,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
         );
       } catch (e) {
         if (!mounted) return;
+        if (e is FreeLimitReachedException) {
+          await _showProLimitDialog();
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Colors.red.shade800,
@@ -449,6 +562,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Column(
       children: [
         _buildAccountBanner(),
+        _buildPlanQuotaBanner(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Column(
@@ -687,6 +801,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Column(
       children: [
         _buildAccountBanner(),
+        _buildPlanQuotaBanner(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
