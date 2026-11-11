@@ -60,7 +60,7 @@ test('panel admin: autoriza owners verificados, bootstrap, activa/regala y desac
       ['monthly', 1.99],
       ['quarterly', 4.99],
       ['semiannual', 7.99],
-      ['annual', 15.99],
+      ['annual', 14.99],
     ],
   );
   assert.equal(isAdminDecodedToken({ email: 'layankrach@gmail.com', email_verified: true }), true);

@@ -36,14 +36,14 @@ enum ProPlanId {
         ProPlanId.monthly => 1.99,
         ProPlanId.quarterly => 4.99,
         ProPlanId.semiannual => 7.99,
-        ProPlanId.annual => 15.99,
+        ProPlanId.annual => 14.99,
       };
 
   String get formattedUsd => switch (this) {
         ProPlanId.monthly => '\$1,99',
         ProPlanId.quarterly => '\$4,99',
         ProPlanId.semiannual => '\$7,99',
-        ProPlanId.annual => '\$15,99',
+        ProPlanId.annual => '\$14,99',
       };
 
   String get periodSuffix => switch (this) {
@@ -64,7 +64,7 @@ enum ProPlanId {
         ProPlanId.monthly => 0,
         ProPlanId.quarterly => 16,
         ProPlanId.semiannual => 33,
-        ProPlanId.annual => 33,
+        ProPlanId.annual => 37,
       };
 
   static ProPlanId? tryParse(String? raw) {

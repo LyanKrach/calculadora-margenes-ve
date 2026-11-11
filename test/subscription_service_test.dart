@@ -235,7 +235,8 @@ void main() {
       expect(ProPlanId.monthly.priceUsd, 1.99);
       expect(ProPlanId.quarterly.priceUsd, 4.99);
       expect(ProPlanId.semiannual.priceUsd, 7.99);
-      expect(ProPlanId.annual.priceUsd, 15.99);
+      expect(ProPlanId.annual.priceUsd, 14.99);
+      expect(ProPlanId.annual.savePercent, 37);
 
       const defCfg = ProPaymentConfig();
       expect(defCfg.pagoMovil.cedulaRif, '31955598');
@@ -347,8 +348,8 @@ void main() {
       expect(find.text('Pro 6 Meses'), findsOneWidget);
       expect(find.text('Pro Trimestral'), findsOneWidget);
       expect(find.text('Pro Mensual'), findsOneWidget);
-      expect(find.text('RECOMENDADO · Ahorra 33%'), findsOneWidget);
-      expect(find.text('\$15,99'), findsOneWidget);
+      expect(find.text('RECOMENDADO · Ahorra 37%'), findsOneWidget);
+      expect(find.text('\$14,99'), findsOneWidget);
       expect(find.text('\$7,99'), findsOneWidget);
       expect(find.text('\$4,99'), findsOneWidget);
       expect(find.text('\$1,99'), findsOneWidget);

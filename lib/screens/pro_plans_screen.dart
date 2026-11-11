@@ -10,7 +10,7 @@ import '../services/subscription_service.dart';
 import '../utils/format.dart';
 import 'auth_screen.dart';
 
-/// Pantalla de Planes Pro ($1,99 Mensual · $4,99 Trimestral · $7,99 6 Meses · $15,99 Anual)
+/// Pantalla de Planes Pro ($1,99 Mensual · $4,99 Trimestral · $7,99 6 Meses · $14,99 Anual)
 /// con verificación automática vía Pabilo, respaldo manual y Panel Admin propietario.
 class ProPlansScreen extends StatefulWidget {
   final ProPlanId initialPlan;
@@ -568,7 +568,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
       children: [
         _buildSinglePlanCard(
           plan: ProPlanId.annual,
-          badge: 'RECOMENDADO · Ahorra 33%',
+          badge: 'RECOMENDADO · Ahorra 37%',
           subtitle: 'Frente a 12 × \$1,99 = \$23,88 al año (365 días)',
           features: const [
             'Productos ilimitados en la nube (app y web)',

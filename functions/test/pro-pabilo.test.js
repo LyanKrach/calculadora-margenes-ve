@@ -373,7 +373,7 @@ test('reconciliación tras timeout permite is_new=false para la misma orden y re
     // Intento 1: timeout (AbortError) después de que Pabilo registró internamente la ref
     () => new Error('The operation was aborted'),
     // Intento 2 (mismo usuario/ref tras error): Pabilo devuelve is_new: false
-    () => ({ status: 200, body: { is_new: false, data: { amount: 15990 } } }),
+    () => ({ status: 200, body: { is_new: false, data: { amount: 14990 } } }),
   ]);
 
   await createProCheckout({
@@ -484,7 +484,7 @@ test('Binance Pay / USDT limpia referencia alfanumérica y asigna provider pabil
   const db = createMemoryFirestore();
   const mockFetch = makeMockFetch([
     () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
-    () => ({ status: 200, body: { is_new: true, data: { amount: 15.99 } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 14.99 } } }),
   ]);
 
   await createProCheckout({
@@ -535,10 +535,10 @@ test('getProPaymentConfigPayload nunca expone apiKey ni bankId al cliente', asyn
       ['monthly', 1.99],
       ['quarterly', 4.99],
       ['semiannual', 7.99],
-      ['annual', 15.99],
+      ['annual', 14.99],
     ],
   );
-  assert.equal(cfg.plans[3].estimatedBs, 14416.9);
+  assert.equal(cfg.plans[3].estimatedBs, 13515.28);
 });
 
 test('checkRateLimit bloquea cuando excede el límite dentro de la ventana', async () => {

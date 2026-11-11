@@ -84,7 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: Text(
                 _subState.isPro
                     ? 'Vence en ${_subState.daysLeft} días · Productos y reportes ilimitados'
-                    : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$15,99/año (-33%)',
+                    : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$14,99/año (-37%)',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {

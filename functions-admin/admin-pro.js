@@ -33,9 +33,9 @@ const PRO_PLANS = Object.freeze({
   annual: Object.freeze({
     id: 'annual',
     name: 'Pro Anual',
-    priceUsd: 15.99,
+    priceUsd: 14.99,
     durationDays: 365,
-    savePercent: 33,
+    savePercent: 37,
     recommended: true,
   }),
 });
