@@ -18,6 +18,9 @@ if (!admin.apps.length) {
 const PABILO_API_KEY = defineSecret("PABILO_API_KEY");
 const PABILO_USER_BANK_ID = defineSecret("PABILO_USER_BANK_ID");
 const PABILO_BINANCE_USER_BANK_ID = defineSecret("PABILO_BINANCE_USER_BANK_ID");
+const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
+const FROM_EMAIL = defineSecret("FROM_EMAIL");
+const REPLY_TO = defineSecret("REPLY_TO");
 
 function applyCors(res, methods = "POST, OPTIONS") {
   res.set("Access-Control-Allow-Origin", "*");
@@ -89,7 +92,11 @@ function sendPaymentError(res, err) {
 /**
  * Función HTTP / Callable para enviar correo de restablecimiento con plantilla HTML prémium.
  */
-exports.sendCustomPasswordResetEmail = functions.https.onRequest(async (req, res) => {
+exports.sendCustomPasswordResetEmail = functions.https.onRequest(
+  {
+    secrets: [RESEND_API_KEY, FROM_EMAIL, REPLY_TO],
+  },
+  async (req, res) => {
   // Configuración de CORS
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -139,16 +146,19 @@ exports.sendCustomPasswordResetEmail = functions.https.onRequest(async (req, res
     const textFallback = `Hola,\n\nPara restablecer tu contraseña en Calculadora de Márgenes, visita el siguiente enlace:\n${resetLink}\n\nEste enlace expira en 1 hora.`;
 
     // 4. Enviar correo usando el proveedor configurado (Resend o SMTP)
-    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = RESEND_API_KEY.value() || process.env.RESEND_API_KEY || "";
     const smtpHost = process.env.SMTP_HOST;
 
-    const replyTo = process.env.REPLY_TO || "sopoterefillstore@gmail.com";
+    const replyTo = REPLY_TO.value() || process.env.REPLY_TO || "soporterefillstore@gmail.com";
 
     if (resendApiKey) {
       const { Resend } = require("resend");
       const resend = new Resend(resendApiKey);
 
-      const fromAddress = process.env.FROM_EMAIL || "Calculadora de Márgenes <onboarding@resend.dev>";
+      const fromAddress =
+        FROM_EMAIL.value() ||
+        process.env.FROM_EMAIL ||
+        "Calculadora de Márgenes <onboarding@resend.dev>";
       const result = await resend.emails.send({
         from: fromAddress,
         to: email,
@@ -170,7 +180,10 @@ exports.sendCustomPasswordResetEmail = functions.https.onRequest(async (req, res
         },
       });
 
-      const fromAddress = process.env.FROM_EMAIL || `"Calculadora de Márgenes" <${process.env.SMTP_USER}>`;
+      const fromAddress =
+        FROM_EMAIL.value() ||
+        process.env.FROM_EMAIL ||
+        `"Calculadora de Márgenes" <${process.env.SMTP_USER}>`;
       await transporter.sendMail({
         from: fromAddress,
         to: email,
@@ -196,7 +209,8 @@ exports.sendCustomPasswordResetEmail = functions.https.onRequest(async (req, res
       error: error.message || "Error al procesar el restablecimiento.",
     });
   }
-});
+  },
+);
 
 /**
  * Devuelve planes Pro, tasa BCV oficial y datos públicos de pago (sin claves).
