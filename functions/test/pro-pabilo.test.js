@@ -690,6 +690,8 @@ test('configuración pública por defecto expone BDV 0102 y Binance Pay ID 91694
   assert.equal(cfg.methods.usdt.network, 'Binance Pay (USDT)');
   assert.equal(cfg.methods.usdt.binanceId, '916942742');
   assert.equal(cfg.methods.usdt.autoVerify, true);
+  assert.equal(cfg.support.email, 'soporterefillstore@gmail.com');
+  assert.equal(cfg.support.whatsapp, '+584161740312');
 
   await createProCheckout({
     db,

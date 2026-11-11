@@ -339,6 +339,9 @@ class UsdtPublicInfo {
 }
 
 class ProPaymentConfig {
+  static const String defaultSupportEmail = 'soporterefillstore@gmail.com';
+  static const String defaultSupportWhatsapp = '+584161740312';
+
   final double? bcvUsd;
   final String? rateEffectiveDate;
   final String? rateSource;
@@ -353,14 +356,16 @@ class ProPaymentConfig {
     this.rateSource,
     this.pagoMovil = const PagoMovilPublicInfo(),
     this.usdt = const UsdtPublicInfo(),
-    this.supportEmail = '',
-    this.supportWhatsapp = '',
+    this.supportEmail = defaultSupportEmail,
+    this.supportWhatsapp = defaultSupportWhatsapp,
   });
 
   factory ProPaymentConfig.fromJson(Map<String, dynamic> json) {
     final bcvMap = json['bcvRate'] as Map<String, dynamic>?;
     final methods = json['methods'] as Map<String, dynamic>?;
     final sup = json['support'] as Map<String, dynamic>?;
+    final email = (sup?['email'] ?? '').toString().trim();
+    final whatsapp = (sup?['whatsapp'] ?? '').toString().trim();
     return ProPaymentConfig(
       bcvUsd: bcvMap != null ? _toDouble(bcvMap['usd']) : null,
       rateEffectiveDate: bcvMap?['effectiveDate']?.toString(),
@@ -371,8 +376,8 @@ class ProPaymentConfig {
       usdt: UsdtPublicInfo.fromJson(
         methods?['usdt'] as Map<String, dynamic>?,
       ),
-      supportEmail: (sup?['email'] ?? '').toString().trim(),
-      supportWhatsapp: (sup?['whatsapp'] ?? '').toString().trim(),
+      supportEmail: email.isNotEmpty ? email : defaultSupportEmail,
+      supportWhatsapp: whatsapp.isNotEmpty ? whatsapp : defaultSupportWhatsapp,
     );
   }
 }

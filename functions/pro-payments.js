@@ -267,8 +267,8 @@ async function loadPublicPaymentConfig({ db, env = process.env, runtimeSecrets =
       autoVerify: Boolean(apiKey && binanceBankId),
     },
     support: {
-      email: String(supportDoc.email || env.PRO_SUPPORT_EMAIL || '').trim(),
-      whatsapp: String(supportDoc.whatsapp || env.PRO_SUPPORT_WHATSAPP || '').trim(),
+      email: String(supportDoc.email || env.PRO_SUPPORT_EMAIL || 'soporterefillstore@gmail.com').trim(),
+      whatsapp: String(supportDoc.whatsapp || env.PRO_SUPPORT_WHATSAPP || '+584161740312').trim(),
     },
   };
 

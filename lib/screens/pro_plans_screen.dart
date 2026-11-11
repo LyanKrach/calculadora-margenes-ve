@@ -412,6 +412,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
             _buildPlanCards(),
             const SizedBox(height: 16),
             _buildPaymentBox(),
+            const SizedBox(height: 16),
+            _buildSupportCard(),
             if (_subService.isCurrentUserAdmin) ...[
               const SizedBox(height: 16),
               _buildAdminEntryCard(),
@@ -1115,6 +1117,92 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Future<void> _openSupportWhatsApp() async {
+    final raw = _paymentConfig.supportWhatsapp.trim().isNotEmpty
+        ? _paymentConfig.supportWhatsapp
+        : ProPaymentConfig.defaultSupportWhatsapp;
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return;
+    final email = _authService.currentUser?.email ?? '';
+    final greeting = _subState.isPro
+        ? 'Hola, soy usuario Pro en Calculadora de Márgenes VE'
+        : 'Hola, necesito soporte con Calculadora de Márgenes VE';
+    final msg = email.isNotEmpty ? '$greeting ($email)' : greeting;
+    final uri = Uri.parse(
+      'https://wa.me/$digits?text=${Uri.encodeComponent(msg)}',
+    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      _copy(raw, 'WhatsApp de soporte');
+    }
+  }
+
+  Future<void> _openSupportEmail() async {
+    final mail = _paymentConfig.supportEmail.trim().isNotEmpty
+        ? _paymentConfig.supportEmail.trim()
+        : ProPaymentConfig.defaultSupportEmail;
+    final subject = Uri.encodeComponent(
+      _subState.isPro
+          ? 'Soporte Prioritario Margenes Pro'
+          : 'Soporte Calculadora de Margenes VE',
+    );
+    final uri = Uri.parse('mailto:$mail?subject=$subject');
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      _copy(mail, 'Correo de soporte');
+    }
+  }
+
+  Widget _buildSupportCard() {
+    final mail = _paymentConfig.supportEmail.trim().isNotEmpty
+        ? _paymentConfig.supportEmail.trim()
+        : ProPaymentConfig.defaultSupportEmail;
+    final rawWa = _paymentConfig.supportWhatsapp.trim().isNotEmpty
+        ? _paymentConfig.supportWhatsapp.trim()
+        : ProPaymentConfig.defaultSupportWhatsapp;
+    final isPro = _subState.isPro;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isPro
+                  ? '🎧 Soporte prioritario activo'
+                  : '🎧 Soporte y atención directa',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isPro
+                  ? 'Tu cuenta Pro tiene atención directa por WhatsApp o correo:'
+                  : '¿Tienes dudas con tu pago, activación Pro o fórmulas? Contáctanos por WhatsApp o correo:',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _openSupportWhatsApp,
+                  icon: const Icon(Icons.chat_outlined, size: 18),
+                  label: Text('WhatsApp ($rawWa)'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _openSupportEmail,
+                  icon: const Icon(Icons.mail_outline, size: 18),
+                  label: Text(mail),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -245,6 +245,8 @@ void main() {
       expect(defCfg.usdt.network, 'Binance Pay (USDT)');
       expect(defCfg.usdt.binanceId, '916942742');
       expect(defCfg.usdt.autoVerify, isTrue);
+      expect(defCfg.supportEmail, 'soporterefillstore@gmail.com');
+      expect(defCfg.supportWhatsapp, '+584161740312');
     });
 
     test('SubscriptionService adminOverview, adminActivatePro y adminDeactivatePro funcionan vía HTTP', () async {
@@ -370,6 +372,14 @@ void main() {
       expect(find.text('916942742'), findsOneWidget);
       expect(find.text('Pabilo automático'), findsOneWidget);
       expect(find.text('Verificar pago y activar Pro'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('WhatsApp (+584161740312)'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('WhatsApp (+584161740312)'), findsOneWidget);
+      expect(find.text('soporterefillstore@gmail.com'), findsOneWidget);
     });
   });
 }
