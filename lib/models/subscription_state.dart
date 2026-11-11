@@ -67,6 +67,13 @@ enum ProPlanId {
         ProPlanId.annual => 37,
       };
 
+  int get tierRank => switch (this) {
+        ProPlanId.monthly => 1,
+        ProPlanId.quarterly => 2,
+        ProPlanId.semiannual => 3,
+        ProPlanId.annual => 4,
+      };
+
   static ProPlanId? tryParse(String? raw) {
     return switch (raw?.trim()) {
       'monthly' => ProPlanId.monthly,
@@ -105,6 +112,32 @@ enum SubscriptionStatus {
   active,
   expired,
   canceled,
+}
+
+class PlanUpgradeInfo {
+  final bool isActive;
+  final ProPlanId? activePlan;
+  final bool isCurrentPlan;
+  final bool isLowerPlan;
+  final bool isUpgrade;
+  final bool canPurchase;
+  final int remainingDays;
+  final int addedDays;
+  final int totalDaysAfter;
+  final DateTime projectedEndDate;
+
+  const PlanUpgradeInfo({
+    required this.isActive,
+    required this.activePlan,
+    required this.isCurrentPlan,
+    required this.isLowerPlan,
+    required this.isUpgrade,
+    required this.canPurchase,
+    required this.remainingDays,
+    required this.addedDays,
+    required this.totalDaysAfter,
+    required this.projectedEndDate,
+  });
 }
 
 double _round2(double v) => (v * 100).roundToDouble() / 100;
@@ -157,6 +190,64 @@ class SubscriptionState {
         daysLeft = 0;
 
   bool get isPro => status == SubscriptionStatus.active;
+
+  ProPlanId? get parsedPlan => ProPlanId.tryParse(plan);
+
+  PlanUpgradeInfo upgradeInfoFor(ProPlanId targetPlan, {DateTime? now}) {
+    final ref = (now ?? DateTime.now()).toUtc();
+    final active = parsedPlan;
+    final addedDays = targetPlan.durationDays;
+    final currentEnd = endDate?.toUtc();
+    final isCurrentlyActive =
+        isPro && active != null && currentEnd != null && currentEnd.isAfter(ref);
+
+    if (!isCurrentlyActive) {
+      return PlanUpgradeInfo(
+        isActive: false,
+        activePlan: active,
+        isCurrentPlan: false,
+        isLowerPlan: false,
+        isUpgrade: false,
+        canPurchase: true,
+        remainingDays: 0,
+        addedDays: addedDays,
+        totalDaysAfter: addedDays,
+        projectedEndDate: ref.add(Duration(days: addedDays)),
+      );
+    }
+
+    final remainingMs = currentEnd.difference(ref).inMilliseconds;
+    final remainingDays = remainingMs > 0 ? (remainingMs / 86400000).ceil() : 0;
+    final curRank = active.tierRank;
+    final tgtRank = targetPlan.tierRank;
+    final isCurrent = tgtRank == curRank;
+    final isLower = tgtRank < curRank;
+    final isUpgrade = tgtRank > curRank;
+    final projectedEnd = currentEnd.add(Duration(days: addedDays));
+
+    return PlanUpgradeInfo(
+      isActive: true,
+      activePlan: active,
+      isCurrentPlan: isCurrent,
+      isLowerPlan: isLower,
+      isUpgrade: isUpgrade,
+      canPurchase: isUpgrade,
+      remainingDays: remainingDays,
+      addedDays: addedDays,
+      totalDaysAfter: remainingDays + addedDays,
+      projectedEndDate: projectedEnd,
+    );
+  }
+
+  ProPlanId? firstAvailableUpgradePlan({DateTime? now}) {
+    if (!isPro) return ProPlanId.annual;
+    for (final pid in ProPlanId.values) {
+      if (upgradeInfoFor(pid, now: now).canPurchase) {
+        return pid;
+      }
+    }
+    return null;
+  }
 
   static bool canAddProduct({
     required int currentCount,

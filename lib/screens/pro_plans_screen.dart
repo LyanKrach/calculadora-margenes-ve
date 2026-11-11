@@ -51,6 +51,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     _selectedPlan = widget.initialPlan;
     _subService.ensureStarted();
     _subState = _subService.currentState;
+    _normalizeSelectedPlan();
     _pendingDoc = _subService.pendingNotifier.value;
     _subService.stateNotifier.addListener(_onSubChanged);
     _subService.pendingNotifier.addListener(_onPendingChanged);
@@ -65,9 +66,19 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     super.dispose();
   }
 
+  void _normalizeSelectedPlan() {
+    if (!_subState.upgradeInfoFor(_selectedPlan).canPurchase) {
+      final next = _subState.firstAvailableUpgradePlan();
+      if (next != null) _selectedPlan = next;
+    }
+  }
+
   void _onSubChanged() {
     if (!mounted) return;
-    setState(() => _subState = _subService.currentState);
+    setState(() {
+      _subState = _subService.currentState;
+      _normalizeSelectedPlan();
+    });
   }
 
   void _onPendingChanged() {
@@ -98,6 +109,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
           _selectedPlan = savedOrder.plan;
           _selectedMethod = savedOrder.method;
         }
+        _normalizeSelectedPlan();
         if (remoteCfg != null) {
           _paymentConfig = remoteCfg;
         }
@@ -142,6 +154,18 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
   Future<ProCheckoutOrder?> _createOrder({bool silent = false}) async {
     if (!_requireRealUser()) {
       await _promptSignInRequired();
+      return null;
+    }
+    if (!_subState.upgradeInfoFor(_selectedPlan).canPurchase) {
+      if (mounted && !silent) {
+        setState(() {
+          _statusBanner = const _PayBanner(
+            tone: _BannerTone.error,
+            message:
+                'Este plan ya está activo en tu cuenta. Elige un plan superior para mejorarlo.',
+          );
+        });
+      }
       return null;
     }
     if (!silent) {
@@ -192,6 +216,16 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
       await _promptSignInRequired();
       return;
     }
+    if (!_subState.upgradeInfoFor(_selectedPlan).canPurchase) {
+      setState(() {
+        _statusBanner = const _PayBanner(
+          tone: _BannerTone.error,
+          message:
+              'Este plan ya está activo en tu cuenta. Elige un plan superior para mejorarlo.',
+        );
+      });
+      return;
+    }
 
     final useManual = forceManual || !_autoVerifyEnabled;
     final cleanRef = SubscriptionService.normalizeReference(
@@ -219,8 +253,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
       _statusBanner = _PayBanner(
         tone: _BannerTone.info,
         message: _selectedMethod == ProPaymentMethod.pagoMovil
-            ? 'Verificando tu referencia automáticamente con Pabilo… Si pagaste vía BDV puede tardar 15 a 35 segundos, no cierres esta pantalla.'
-            : 'Verificando tu orden de Binance Pay automáticamente con Pabilo… Un momento por favor, no cierres esta pantalla.',
+            ? 'Verificando pago… Si pagaste vía BDV puede tardar 15 a 35 segundos, no cierres esta pantalla.'
+            : 'Verificando pago… Un momento por favor, no cierres esta pantalla.',
       );
     });
 
@@ -629,70 +663,105 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     );
   }
 
+  String _fmtShortDate(DateTime? dt) {
+    if (dt == null) return '—';
+    final l = dt.toLocal();
+    const months = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+    ];
+    return '${l.day.toString().padLeft(2, '0')} ${months[l.month - 1]} ${l.year}';
+  }
+
   Widget _buildSinglePlanCard({
     required ProPlanId plan,
     required String badge,
     required String subtitle,
     required List<String> features,
   }) {
-    final selected = _selectedPlan == plan;
+    final upInfo = _subState.upgradeInfoFor(plan);
+    final selected = upInfo.canPurchase && _selectedPlan == plan;
     final estBs = SubscriptionState.planBsEstimate(plan, _bcvRate);
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: selected ? scheme.primary : scheme.outlineVariant,
-          width: selected ? 2 : 1,
+    final Color borderColor = upInfo.isCurrentPlan
+        ? Colors.green
+        : (selected ? scheme.primary : scheme.outlineVariant);
+    final double borderWidth = (selected || upInfo.isCurrentPlan) ? 2 : 1;
+    final String pillText = _subState.isPro
+        ? (upInfo.isCurrentPlan
+            ? 'Plan actual'
+            : (upInfo.isLowerPlan
+                ? 'Incluido'
+                : 'Mejorar · $badge'))
+        : badge;
+    final Color pillBg = upInfo.isCurrentPlan
+        ? Colors.green.withValues(alpha: 0.16)
+        : (upInfo.isLowerPlan
+            ? scheme.surfaceContainerHighest
+            : (plan == ProPlanId.annual
+                ? scheme.primaryContainer
+                : scheme.surfaceContainerHighest));
+    final Color? pillFg = upInfo.isCurrentPlan
+        ? Colors.green.shade800
+        : (plan == ProPlanId.annual && !upInfo.isLowerPlan
+            ? scheme.onPrimaryContainer
+            : null);
+
+    return Opacity(
+      opacity: (_subState.isPro && upInfo.isLowerPlan) ? 0.65 : 1.0,
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: borderColor,
+            width: borderWidth,
+          ),
         ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => setState(() {
-          _selectedPlan = plan;
-          if (_statusBanner?.tone != _BannerTone.success) {
-            _statusBanner = null;
-          }
-        }),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    plan.displayName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: plan == ProPlanId.annual
-                          ? scheme.primaryContainer
-                          : scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: plan == ProPlanId.annual
-                            ? scheme.onPrimaryContainer
-                            : null,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: upInfo.canPurchase
+              ? () => setState(() {
+                    _selectedPlan = plan;
+                    if (_statusBanner?.tone != _BannerTone.success) {
+                      _statusBanner = null;
+                    }
+                  })
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      plan.displayName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: pillBg,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        pillText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: pillFg,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 6),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -741,18 +810,77 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                     ],
                   ),
                 ),
+              if (_subState.isPro) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: upInfo.isCurrentPlan
+                        ? Colors.green.withValues(alpha: 0.10)
+                        : (upInfo.isUpgrade
+                            ? scheme.primaryContainer.withValues(alpha: 0.28)
+                            : scheme.surfaceContainerHighest
+                                .withValues(alpha: 0.6)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: upInfo.isCurrentPlan
+                          ? Colors.green.withValues(alpha: 0.45)
+                          : (upInfo.isUpgrade
+                              ? scheme.primary.withValues(alpha: 0.35)
+                              : scheme.outlineVariant),
+                    ),
+                  ),
+                  child: Text(
+                    upInfo.isCurrentPlan
+                        ? '✓ Plan actual activo (${upInfo.remainingDays} días restantes hasta el ${_fmtShortDate(_subState.endDate)}). Elige un plan superior para acumular tus días.'
+                        : (upInfo.isLowerPlan
+                            ? 'Incluido en tu plan actual (${upInfo.activePlan?.displayName ?? 'Pro'}).'
+                            : '📅 Ajuste de acumulación de días: tus ${upInfo.remainingDays} días actuales + ${upInfo.addedDays} días = ${upInfo.totalDaysAfter} días totales (hasta el ${_fmtShortDate(upInfo.projectedEndDate)}).'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: upInfo.isCurrentPlan
+                          ? Colors.green.shade900
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
+    ),
     );
   }
 
   Widget _buildPaymentBox() {
     final scheme = Theme.of(context).colorScheme;
+    final firstUp = _subState.firstAvailableUpgradePlan();
+    if (_subState.isPro && firstUp == null) {
+      final activeName =
+          (_subState.parsedPlan ?? ProPlanId.annual).displayName;
+      return Card(
+        color: Colors.green.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.green.withValues(alpha: 0.45)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            '✅ Ya cuentas con el plan máximo ($activeName) activo hasta el ${_fmtShortDate(_subState.endDate)} (${_subState.daysLeft} días restantes). No necesitas volver a comprar mientras esté vigente.',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
+      );
+    }
+
     final ord = _matchingOrder;
     final pm = _paymentConfig.pagoMovil;
     final usdt = _paymentConfig.usdt;
+    final selUpInfo = _subState.upgradeInfoFor(_selectedPlan);
     final estBs = SubscriptionState.planBsEstimate(_selectedPlan, _bcvRate);
 
     return Card(
@@ -819,7 +947,9 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _selectedPlan.displayName,
+                          selUpInfo.isUpgrade
+                              ? 'Mejora a ${_selectedPlan.displayName}'
+                              : _selectedPlan.displayName,
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
@@ -831,6 +961,17 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                               : 'Monto exacto: \$${_selectedPlan.priceUsd.toStringAsFixed(2)} USDT',
                           style: const TextStyle(fontSize: 13),
                         ),
+                        if (selUpInfo.isUpgrade) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '📅 Ajuste de acumulación: incluye +${selUpInfo.remainingDays} días actuales = ${selUpInfo.totalDaysAfter} días totales (hasta el ${_fmtShortDate(selUpInfo.projectedEndDate)}).',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: scheme.primary,
+                            ),
+                          ),
+                        ],
                         if (_autoVerifyEnabled) ...[
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
@@ -903,7 +1044,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                       ),
                 label: Text(
                   _verifying
-                      ? 'Verificando con Pabilo…'
+                      ? 'Verificando pago…'
                       : (_autoVerifyEnabled
                           ? 'Verificar pago y activar Pro'
                           : 'Enviar referencia para validación manual'),

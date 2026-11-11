@@ -110,6 +110,74 @@ function checkAmount(expected, received, alertOverPercent = OVERPAY_ALERT_PERCEN
   };
 }
 
+const PLAN_ORDER = Object.freeze({
+  monthly: 1,
+  quarterly: 2,
+  semiannual: 3,
+  annual: 4,
+});
+
+function planTier(planId) {
+  return PLAN_ORDER[String(planId || '').trim()] || 0;
+}
+
+function computeUpgradeAdjustment({ existingSub, targetPlanId, nowMs = Date.now() }) {
+  const targetPlan = PRO_PLANS[targetPlanId];
+  const addedDays = targetPlan ? targetPlan.durationDays : 0;
+  if (!existingSub || existingSub.status !== 'active' || !existingSub.endDate) {
+    return {
+      isActive: false,
+      activePlan: null,
+      currentTier: 0,
+      targetTier: planTier(targetPlanId),
+      isCurrentPlan: false,
+      isLowerPlan: false,
+      isUpgrade: false,
+      remainingDays: 0,
+      addedDays,
+      totalDaysAfter: addedDays,
+      newEndDate: null,
+    };
+  }
+  const parsedEnd = new Date(existingSub.endDate);
+  const endMs = parsedEnd.getTime();
+  if (Number.isNaN(endMs) || endMs <= nowMs) {
+    return {
+      isActive: false,
+      activePlan: null,
+      currentTier: 0,
+      targetTier: planTier(targetPlanId),
+      isCurrentPlan: false,
+      isLowerPlan: false,
+      isUpgrade: false,
+      remainingDays: 0,
+      addedDays,
+      totalDaysAfter: addedDays,
+      newEndDate: null,
+    };
+  }
+  const activePlan = existingSub.plan && PRO_PLANS[existingSub.plan] ? existingSub.plan : null;
+  const currentTier = planTier(activePlan);
+  const targetTier = planTier(targetPlanId);
+  const remainingDays = Math.max(1, Math.ceil((endMs - nowMs) / 86_400_000));
+  const isCurrentPlan = Boolean(activePlan && targetPlanId === activePlan);
+  const isLowerPlan = Boolean(currentTier > 0 && targetTier > 0 && targetTier < currentTier);
+  const isUpgrade = Boolean(currentTier > 0 && targetTier > currentTier);
+  return {
+    isActive: Boolean(activePlan),
+    activePlan,
+    currentTier,
+    targetTier,
+    isCurrentPlan,
+    isLowerPlan,
+    isUpgrade,
+    remainingDays,
+    addedDays,
+    totalDaysAfter: remainingDays + addedDays,
+    newEndDate: new Date(endMs + addedDays * 86_400_000).toISOString(),
+  };
+}
+
 function computeSubscriptionDates({ existingSub, durationDays, nowMs = Date.now() }) {
   const nowDate = new Date(nowMs);
   const nowIso = nowDate.toISOString();
@@ -388,6 +456,30 @@ async function createProCheckout({
     throw new ProPaymentError(400, 'INVALID_METHOD', 'Método de pago inválido.');
   }
 
+  let existingSub = null;
+  try {
+    const subSnap = await db.collection('users').doc(uid).collection('subscription').doc('current').get();
+    existingSub = subSnap.exists ? subSnap.data() : null;
+  } catch {
+    existingSub = null;
+  }
+  const upgradeAdj = computeUpgradeAdjustment({
+    existingSub,
+    targetPlanId: plan.id,
+    nowMs,
+  });
+  if (upgradeAdj.isActive && (upgradeAdj.isCurrentPlan || upgradeAdj.isLowerPlan)) {
+    const activePlanName =
+      (PRO_PLANS[upgradeAdj.activePlan] && PRO_PLANS[upgradeAdj.activePlan].name) || 'Pro';
+    throw new ProPaymentError(
+      409,
+      upgradeAdj.isCurrentPlan ? 'ALREADY_ON_THIS_PLAN' : 'CANNOT_DOWNGRADE_ACTIVE_PLAN',
+      upgradeAdj.isCurrentPlan
+        ? `Ya tienes activo el plan ${activePlanName} (${upgradeAdj.remainingDays} días restantes). Elige un plan superior para mejorarlo con acumulación de días.`
+        : `Ya cuentas con el plan superior ${activePlanName} activo (${upgradeAdj.remainingDays} días restantes).`,
+    );
+  }
+
   const { publicConfig, secrets } = await loadPublicPaymentConfig({ db, env, runtimeSecrets });
   const bcvRate = await resolveAuthoritativeBcvRate({
     fetchImpl,
@@ -449,6 +541,10 @@ async function createProCheckout({
     rateBs: bcvRate.usd,
     rateSource: bcvRate.source,
     rateEffectiveDate: bcvRate.effectiveDate,
+    upgradeFromPlan: upgradeAdj.isUpgrade ? upgradeAdj.activePlan : null,
+    accumulatedDays: upgradeAdj.isUpgrade ? upgradeAdj.remainingDays : 0,
+    totalDaysWithAccumulation: upgradeAdj.isUpgrade ? upgradeAdj.totalDaysAfter : plan.durationDays,
+    projectedEndDate: upgradeAdj.isUpgrade ? upgradeAdj.newEndDate : null,
     status: 'awaiting_payment',
     attempts: 0,
     maxAttempts: MAX_VERIFY_ATTEMPTS,
@@ -1835,6 +1931,8 @@ module.exports = {
   round,
   checkAmount,
   computeSubscriptionDates,
+  computeUpgradeAdjustment,
+  PLAN_ORDER,
   makeReferenceLockKey,
   resolveAuthoritativeBcvRate,
   loadPublicPaymentConfig,
