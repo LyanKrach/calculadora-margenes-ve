@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/product_item.dart';
 import 'auth_service.dart';
+import 'price_list_formatter.dart';
 
 /// Servicio de gestión del Catálogo de Productos con respaldo por cuenta
 /// en `Cloud Firestore` (`users/{uid}/products/{productId}`) y caché
@@ -66,14 +67,18 @@ class ProductsService {
 
       final remoteList = <ProductItem>[];
       for (final doc in snap.docs) {
-        final item = ProductItem.fromJson(doc.data());
+        final raw = Map<String, dynamic>.from(doc.data());
+        if ((raw['id']?.toString() ?? '').trim().isEmpty) {
+          raw['id'] = doc.id;
+        }
+        final item = ProductItem.fromJson(raw);
         if (item.isValid) {
           remoteList.add(item);
         }
       }
 
       remoteList.sort(
-        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        (a, b) => compareNaturalProductNames(a.name, b.name),
       );
 
       // Actualizar la caché local exclusiva de este usuario
@@ -89,10 +94,54 @@ class ProductsService {
     }
   }
 
+  static void _validateForCloud(ProductItem product) {
+    final name = product.name.trim();
+    final cat = product.category.trim();
+    if (product.id.trim().isEmpty || product.id.length > 120) {
+      throw ArgumentError('Identificador de producto inválido.');
+    }
+    if (name.isEmpty || name.length > 120) {
+      throw ArgumentError(
+        'El nombre del producto debe tener entre 1 y 120 caracteres.',
+      );
+    }
+    if (cat.length > 80) {
+      throw ArgumentError(
+        'La categoría no puede superar los 80 caracteres.',
+      );
+    }
+    if (product.costUsd <= 0) {
+      throw ArgumentError('El costo en USD debe ser mayor que 0.');
+    }
+    if (product.marginPercent < 0 || product.marginPercent >= 100) {
+      throw ArgumentError('El margen debe estar entre 0 % y 99,9 %.');
+    }
+    if (product.fixedExpenseBs < 0) {
+      throw ArgumentError('El gasto fijo no puede ser negativo.');
+    }
+    if (product.commissionPlatform < 0 ||
+        product.commissionPaymentMethod < 0 ||
+        product.commissionOther < 0 ||
+        (product.commissionPlatform +
+                product.commissionPaymentMethod +
+                product.commissionOther) >=
+            1.0) {
+      throw ArgumentError(
+        'Las comisiones deben ser no negativas y sumar menos del 100 %.',
+      );
+    }
+    if (!const [0, 1, 10, 50, 100].contains(product.roundStep)) {
+      throw ArgumentError('Paso de redondeo inválido.');
+    }
+    if (product.customRateValue != null && product.customRateValue! < 0) {
+      throw ArgumentError('La tasa personalizada no puede ser negativa.');
+    }
+  }
+
   /// Guarda o actualiza un producto directamente en Firestore (`users/{uid}/products/{id}`)
   /// y actualiza la caché local del usuario autenticado.
   Future<void> saveProduct(ProductItem product) async {
-    if (!product.isValid) return;
+    _validateForCloud(product);
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -165,15 +214,24 @@ class ProductsService {
     }
 
     final userKey = _cacheKeyForUser();
-    return col.orderBy('updatedAt', descending: true).snapshots().map((snap) {
+    return col.snapshots().map((snap) {
       final list = <ProductItem>[];
       for (final doc in snap.docs) {
-        final p = ProductItem.fromJson(doc.data());
+        final raw = Map<String, dynamic>.from(doc.data());
+        if ((raw['id']?.toString() ?? '').trim().isEmpty) {
+          raw['id'] = doc.id;
+        }
+        final p = ProductItem.fromJson(raw);
         if (p.isValid) list.add(p);
       }
-      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.setString(userKey, jsonEncode(list.map((p) => p.toJson()).toList()));
+      list.sort((a, b) => compareNaturalProductNames(a.name, b.name));
+      SharedPreferences.getInstance().then((prefs) async {
+        try {
+          await prefs.setString(
+            userKey,
+            jsonEncode(list.map((p) => p.toJson()).toList()),
+          );
+        } catch (_) {}
       });
       return list;
     });

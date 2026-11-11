@@ -9,10 +9,12 @@ import '../models/rate.dart';
 import '../services/auth_service.dart';
 import '../services/calculator.dart';
 import '../services/history_service.dart';
+import '../services/price_list_formatter.dart';
 import '../services/products_service.dart';
 import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
 import '../utils/format.dart';
+import '../widgets/category_picker_field.dart';
 import '../widgets/history_presets_sheet.dart';
 import 'auth_screen.dart';
 
@@ -289,35 +291,73 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
     if (!mounted) return;
 
+    final existingProducts = await _productsService.getProducts(syncRemote: false);
+    if (!mounted) return;
+    final existingCategories = extractUniqueCategories(existingProducts);
+
     final nameCtrl = TextEditingController(
       text: 'Producto \$${fmtUsd(_costUsd)}',
     );
-    final confirmed = await showDialog<String>(
+    final categoryCtrl = TextEditingController();
+    var selectedCategory = '';
+
+    final result = await showDialog<({String name, String category})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Guardar como plantilla'),
-        content: TextField(
-          controller: nameCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Nombre de la plantilla',
-            hintText: 'Ej. Recarga 100 Diamantes',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Guardar como plantilla'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre del producto / plantilla',
+                    hintText: 'Ej. 100 + 10 Diamantes',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                CategoryPickerField(
+                  existingCategories: existingCategories,
+                  selectedValue: selectedCategory,
+                  newCategoryController: categoryCtrl,
+                  onChanged: (v) => setDialogState(() => selectedCategory = v),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final trimmedName = nameCtrl.text.trim();
+                if (trimmedName.isEmpty) return;
+                Navigator.of(ctx).pop((
+                  name: trimmedName,
+                  category: resolveSelectedCategory(
+                    selectedCategory,
+                    categoryCtrl.text,
+                  ),
+                ));
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(nameCtrl.text.trim()),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
+    nameCtrl.dispose();
+    categoryCtrl.dispose();
 
-    if (confirmed == null || confirmed.isEmpty) return;
+    if (result == null || result.name.isEmpty) return;
+    final confirmed = result.name;
 
     final now = DateTime.now();
     final idSuffix = now.microsecondsSinceEpoch.toString();
@@ -340,6 +380,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     final product = ProductItem(
       id: 'prod_$idSuffix',
       name: confirmed,
+      category: result.category,
       costUsd: _costUsd,
       marginPercent: _margin * 100,
       fixedExpenseBs: _fixed,

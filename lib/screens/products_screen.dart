@@ -9,12 +9,15 @@ import '../models/calculation_item.dart';
 import '../models/margin_mode.dart';
 import '../models/product_item.dart';
 import '../models/rate.dart';
+import '../models/seller_profile.dart';
 import '../services/auth_service.dart';
 import '../services/history_service.dart';
+import '../services/price_list_formatter.dart';
 import '../services/products_service.dart';
 import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
 import '../utils/format.dart';
+import '../widgets/category_picker_field.dart';
 import 'auth_screen.dart';
 
 /// Pantalla de Catálogo de Productos (con precios en Bs calculados al instante)
@@ -38,23 +41,44 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<ProductItem> _products = const [];
   List<HistoryEntry> _history = const [];
   Map<RateSource, Rate> _ratesMap = {};
+  SellerProfile? _profile;
   double _globalCustomRate = 0;
   RateSource? _overrideSource;
   bool _loading = true;
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<List<ProductItem>>? _productsSub;
 
   @override
   void initState() {
     super.initState();
+    _subscribeProducts();
     _refreshAll();
     _searchCtrl.addListener(() => setState(() {}));
     _authSub = _authService.authStateChanges.listen((_) {
-      if (mounted) _refreshAll();
+      if (!mounted) return;
+      _subscribeProducts();
+      _refreshAll();
     });
+  }
+
+  void _subscribeProducts() {
+    _productsSub?.cancel();
+    if (!AuthService.isFirebaseInitialized || !_authService.isSignedIn) {
+      _productsSub = null;
+      return;
+    }
+    _productsSub = _productsService.streamProducts().listen(
+      (list) {
+        if (!mounted) return;
+        setState(() => _products = list);
+      },
+      onError: (_) {},
+    );
   }
 
   @override
   void dispose() {
+    _productsSub?.cancel();
     _authSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
@@ -68,6 +92,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _ratesService.getCustomRate(),
         _productsService.getProducts(syncRemote: true),
         _historyService.getHistory(syncRemote: true),
+        _profileService.getProfile(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -75,6 +100,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _globalCustomRate = (results[1] as double?) ?? 0;
         _products = results[2] as List<ProductItem>;
         _history = results[3] as List<HistoryEntry>;
+        _profile = results[4] as SellerProfile;
         _loading = false;
       });
     } catch (_) {
@@ -269,11 +295,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     if (!mounted) return;
 
+    final categories = extractUniqueCategories(_products);
     final saved = await showModalBottomSheet<ProductItem>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _ProductFormSheet(
         existing: existing,
+        existingCategories: categories,
         defaultCustomRate: _globalCustomRate,
       ),
     );
@@ -321,6 +349,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
+  Future<void> _openSharePriceListModal() async {
+    if (_products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Agrega al menos un producto para armar tu lista de precios.'),
+        ),
+      );
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _SharePriceListSheet(
+        products: _products,
+        ratesMap: _ratesMap,
+        globalCustomRate: _globalCustomRate,
+        initialOverrideSource: _overrideSource,
+        initialSearchQuery: _searchCtrl.text.trim(),
+        profile: _profile,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSignedIn = _authService.isSignedIn;
@@ -331,6 +382,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         appBar: AppBar(
           title: const Text('Productos e Historial'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Compartir lista de precios por WhatsApp',
+              onPressed: _openSharePriceListModal,
+            ),
             IconButton(
               icon: Icon(
                 isSignedIn ? Icons.cloud_done : Icons.cloud_upload_outlined,
@@ -442,6 +498,17 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ],
                 ),
               ),
+              if (_products.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _openSharePriceListModal,
+                    icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+                    label: const Text('Compartir lista de precios por WhatsApp'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -711,10 +778,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
 class _ProductFormSheet extends StatefulWidget {
   const _ProductFormSheet({
     this.existing,
+    this.existingCategories = const [],
     required this.defaultCustomRate,
   });
 
   final ProductItem? existing;
+  final List<String> existingCategories;
   final double defaultCustomRate;
 
   @override
@@ -732,6 +801,8 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
   late final TextEditingController _otherCtrl;
   late final TextEditingController _customRateCtrl;
 
+  late final List<String> _availableCategories;
+  late String _selectedCategory;
   late RateSource _rateSource;
   late MarginMode _marginMode;
   late int _roundStep;
@@ -748,7 +819,21 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     super.initState();
     final e = widget.existing;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
-    _categoryCtrl = TextEditingController(text: e?.category ?? '');
+    final existingCat = (e?.category ?? '').trim();
+    final catMap = <String, String>{};
+    for (final c in widget.existingCategories) {
+      final t = c.trim();
+      if (t.isNotEmpty) catMap.putIfAbsent(t.toLowerCase(), () => t);
+    }
+    if (existingCat.isNotEmpty) {
+      catMap.putIfAbsent(existingCat.toLowerCase(), () => existingCat);
+    }
+    _availableCategories = catMap.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    _selectedCategory = existingCat.isEmpty
+        ? ''
+        : (catMap[existingCat.toLowerCase()] ?? existingCat);
+    _categoryCtrl = TextEditingController();
     _costCtrl = TextEditingController(text: e != null ? _fmt(e.costUsd) : '10');
     _marginCtrl =
         TextEditingController(text: e != null ? _fmt(e.marginPercent) : '20');
@@ -810,8 +895,41 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
       setState(() => _error = 'Escribe el nombre del producto.');
       return;
     }
+    if (name.length > 120) {
+      setState(
+        () => _error = 'El nombre no puede superar los 120 caracteres.',
+      );
+      return;
+    }
+    final category =
+        resolveSelectedCategory(_selectedCategory, _categoryCtrl.text);
+    if (_selectedCategory == kNewCategorySentinel && category.isEmpty) {
+      setState(
+        () => _error =
+            'Escribe el nombre de la nueva categoría o selecciona "Sin categoría".',
+      );
+      return;
+    }
+    if (category.length > 80) {
+      setState(
+        () => _error = 'La categoría no puede superar los 80 caracteres.',
+      );
+      return;
+    }
     if (cost <= 0) {
       setState(() => _error = 'El costo en USD debe ser mayor que 0.');
+      return;
+    }
+    if (marginPct < 0 || marginPct >= 100) {
+      setState(
+        () => _error = 'El margen debe estar entre 0 % y 99,9 %.',
+      );
+      return;
+    }
+    if (_rateSource == RateSource.custom && (customRate == null || customRate <= 0)) {
+      setState(
+        () => _error = 'Escribe una tasa personalizada mayor que 0.',
+      );
       return;
     }
     if (_marginMode == MarginMode.onCost) {
@@ -832,7 +950,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     final product = ProductItem(
       id: widget.existing?.id ?? 'prod_${now.microsecondsSinceEpoch}',
       name: name,
-      category: _categoryCtrl.text.trim(),
+      category: category,
       costUsd: cost,
       marginPercent: marginPct,
       fixedExpenseBs: fixedBs,
@@ -874,12 +992,12 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: _categoryCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Categoría (opcional)',
-                hintText: 'Ej. Gaming, Víveres, Servicios',
-              ),
+            CategoryPickerField(
+              existingCategories: _availableCategories,
+              selectedValue: _selectedCategory,
+              newCategoryController: _categoryCtrl,
+              autofocusNewField: widget.existing == null,
+              onChanged: (v) => setState(() => _selectedCategory = v),
             ),
             const SizedBox(height: 10),
             Row(
@@ -1053,6 +1171,299 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                     onPressed: _save,
                     icon: const Icon(Icons.save_outlined),
                     label: const Text('Guardar producto'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SharePriceListSheet extends StatefulWidget {
+  const _SharePriceListSheet({
+    required this.products,
+    required this.ratesMap,
+    required this.globalCustomRate,
+    required this.initialOverrideSource,
+    required this.initialSearchQuery,
+    this.profile,
+  });
+
+  final List<ProductItem> products;
+  final Map<RateSource, Rate> ratesMap;
+  final double globalCustomRate;
+  final RateSource? initialOverrideSource;
+  final String initialSearchQuery;
+  final SellerProfile? profile;
+
+  @override
+  State<_SharePriceListSheet> createState() => _SharePriceListSheetState();
+}
+
+class _SharePriceListSheetState extends State<_SharePriceListSheet> {
+  late final List<String> _categories;
+  late final bool _hasUncategorized;
+  late final Set<String> _selectedCategories;
+  late bool _includeUncategorized;
+  RateSource? _overrideSource;
+  bool _includePaymentData = false;
+  late final TextEditingController _previewCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _categories = extractUniqueCategories(widget.products);
+    _hasUncategorized = hasUncategorizedProducts(widget.products);
+    _overrideSource = widget.initialOverrideSource;
+
+    final queryLower = widget.initialSearchQuery.toLowerCase();
+    final matched = queryLower.isNotEmpty
+        ? _categories.where((c) => c.toLowerCase().contains(queryLower)).toSet()
+        : <String>{};
+
+    if (matched.isNotEmpty) {
+      _selectedCategories = matched;
+      _includeUncategorized = false;
+    } else {
+      _selectedCategories = Set<String>.from(_categories);
+      _includeUncategorized = _hasUncategorized;
+    }
+
+    _previewCtrl = TextEditingController();
+    _regeneratePreview();
+  }
+
+  @override
+  void dispose() {
+    _previewCtrl.dispose();
+    super.dispose();
+  }
+
+  void _regeneratePreview() {
+    _previewCtrl.text = buildWhatsAppPriceList(
+      products: widget.products,
+      selectedCategories: _selectedCategories,
+      includeUncategorized: _includeUncategorized,
+      ratesMap: widget.ratesMap,
+      globalCustomRate: widget.globalCustomRate,
+      overrideSource: _overrideSource,
+      profile: widget.profile,
+      includePaymentData: _includePaymentData,
+    );
+  }
+
+  int _countForCategory(String cat) {
+    final lower = cat.toLowerCase();
+    return widget.products
+        .where((p) => p.category.trim().toLowerCase() == lower)
+        .length;
+  }
+
+  Future<void> _copyMessage() async {
+    final msg = _previewCtrl.text.trim();
+    if (msg.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: msg));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Lista de precios copiada al portapapeles')),
+    );
+  }
+
+  Future<void> _sendWhatsApp() async {
+    final msg = _previewCtrl.text.trim();
+    if (msg.isEmpty) return;
+    final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('WhatsApp no disponible: lista copiada al portapapeles'),
+        ),
+      );
+    } else if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final uncatCount =
+        widget.products.where((p) => p.category.trim().isEmpty).length;
+    final hasAnySelected =
+        _selectedCategories.isNotEmpty || _includeUncategorized;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.playlist_add_check_rounded, color: scheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Compartir lista de precios',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedCategories
+                        ..clear()
+                        ..addAll(_categories);
+                      _includeUncategorized = _hasUncategorized;
+                      _regeneratePreview();
+                    });
+                  },
+                  child: const Text('Todas'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedCategories.clear();
+                      _includeUncategorized = false;
+                      _regeneratePreview();
+                    });
+                  },
+                  child: const Text('Ninguna'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Elige una o varias categorías para armar la lista ordenada por WhatsApp.',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final cat in _categories)
+                  FilterChip(
+                    label: Text('$cat (${_countForCategory(cat)})'),
+                    selected: _selectedCategories.contains(cat),
+                    onSelected: (sel) {
+                      setState(() {
+                        if (sel) {
+                          _selectedCategories.add(cat);
+                        } else {
+                          _selectedCategories.remove(cat);
+                        }
+                        _regeneratePreview();
+                      });
+                    },
+                  ),
+                if (_hasUncategorized)
+                  FilterChip(
+                    label: Text('Sin categoría ($uncatCount)'),
+                    selected: _includeUncategorized,
+                    onSelected: (sel) {
+                      setState(() {
+                        _includeUncategorized = sel;
+                        _regeneratePreview();
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<RateSource?>(
+              initialValue: _overrideSource,
+              decoration: const InputDecoration(
+                labelText: 'Tasa para calcular la lista',
+              ),
+              items: [
+                const DropdownMenuItem<RateSource?>(
+                  value: null,
+                  child: Text('Tasa guardada en cada producto'),
+                ),
+                for (final s in [
+                  RateSource.bcvUsd,
+                  RateSource.binanceUsdt,
+                  RateSource.euroBcv,
+                ])
+                  DropdownMenuItem<RateSource?>(
+                    value: s,
+                    child: Text(
+                      '${s.label} (${widget.ratesMap[s] != null ? fmtRate(widget.ratesMap[s]!.value) : "—"})',
+                    ),
+                  ),
+              ],
+              onChanged: (v) {
+                setState(() {
+                  _overrideSource = v;
+                  _regeneratePreview();
+                });
+              },
+            ),
+            if (widget.profile != null && widget.profile!.hasPagoMovil)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Incluir datos de Pago Móvil',
+                  style: TextStyle(fontSize: 13),
+                ),
+                value: _includePaymentData,
+                onChanged: (v) {
+                  setState(() {
+                    _includePaymentData = v;
+                    _regeneratePreview();
+                  });
+                },
+              ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _previewCtrl,
+              maxLines: 8,
+              style: const TextStyle(fontSize: 13, height: 1.35),
+              decoration: InputDecoration(
+                labelText: 'Vista previa del mensaje (puedes editarlo)',
+                alignLabelWithHint: true,
+                suffixIcon: IconButton(
+                  tooltip: 'Regenerar texto',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () => setState(_regeneratePreview),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (!hasAnySelected || _previewCtrl.text.trim().isEmpty)
+                            ? null
+                            : _copyMessage,
+                    icon: const Icon(Icons.copy, size: 18),
+                    label: const Text('Copiar lista'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed:
+                        (!hasAnySelected || _previewCtrl.text.trim().isEmpty)
+                            ? null
+                            : _sendWhatsApp,
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('WhatsApp'),
                   ),
                 ),
               ],
