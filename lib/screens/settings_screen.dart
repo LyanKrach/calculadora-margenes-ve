@@ -78,13 +78,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               title: Text(
                 _subState.isPro
-                    ? 'Plan Pro Activo (${_subState.plan == 'annual' ? 'Anual' : 'Mensual'})'
+                    ? 'Plan Pro Activo (${ProPlanId.tryParse(_subState.plan)?.shortName ?? 'Pro'})'
                     : 'Plan Gratis · Pasar a Pro',
               ),
               subtitle: Text(
                 _subState.isPro
                     ? 'Vence en ${_subState.daysLeft} días · Productos y reportes ilimitados'
-                    : 'Desde \$1,99/mes o \$15/año (-37%) · Activación automática con Pabilo',
+                    : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$15,99/año (-33%)',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {

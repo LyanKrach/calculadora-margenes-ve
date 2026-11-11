@@ -9,7 +9,7 @@ rules_version = '2';
 // Collection: users
 // Document ID: {userId} (matches Firebase Auth UID)
 // Fields:
-//   - User profile metadata (up to 15 keys, owner-scoped only)
+//   - User profile metadata (up to 15 keys; owner-scoped writes, owner or admin read, admin list)
 //
 // Subcollection: users/{userId}/products
 // Document ID: {productId}
@@ -56,23 +56,24 @@ rules_version = '2';
 //
 // Subcollection: users/{userId}/subscription
 // Document ID: 'current' (ACTIVE subscription; read-only for the owner,
-//   written only by an admin custom claim, Admin SDK, or the Firebase Console)
+//   written only by an admin [custom claim or verified admin email], Admin SDK, or the Firebase Console)
 // Required Fields:
 //   - v: int
-//   - plan: string (in ['monthly', 'annual'])
+//   - plan: string (in ['monthly', 'quarterly', 'semiannual', 'annual'])
 //   - status: string (in ['active', 'expired', 'canceled'])
 //   - startDate: string (10..60 chars, ISO-8601)
 //   - endDate: string (10..60 chars, ISO-8601)
-//   - provider: string (1..30 chars, e.g. 'manual', 'pabilo_bdv', 'pabilo_binance')
+//   - provider: string (1..30 chars, e.g. 'manual', 'pabilo_bdv', 'pabilo_binance', 'admin_panel', 'admin_owner')
 // Optional Fields:
 //   - paymentRef: string (<= 100), orderId: string (<= 80), amountUsd: number (>= 0),
 //     paidAmount: number (>= 0), currency: string (in ['BS', 'USD']),
-//     overpaidAlert: bool, activatedBy: string (<= 120), updatedAt: string (<= 60)
+//     overpaidAlert: bool, durationDays: int (0..3650), note: string (<= 200),
+//     activatedBy: string (<= 120), updatedAt: string (<= 60)
 // Document ID: 'pending' (payment reference submitted by the owner, awaiting
-//   admin verification; owner may create/update/delete)
+//   admin verification; owner may create/update/delete, admin may read/list/manage/delete)
 // Required Fields:
 //   - v: int
-//   - plan: string (in ['monthly', 'annual'])
+//   - plan: string (in ['monthly', 'quarterly', 'semiannual', 'annual'])
 //   - method: string (in ['pago_movil', 'usdt'])
 //   - reference: string (4..60 chars)
 //   - amountUsd: number (> 0 and <= 100)
@@ -343,16 +344,24 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.get('admin', false) == true;
+      return isAuthenticated() && (
+        request.auth.token.get('admin', false) == true ||
+        (request.auth.token.get('email_verified', false) == true &&
+         request.auth.token.get('email', '') is string &&
+         request.auth.token.get('email', '').lower() in [
+           'layankrach@gmail.com',
+           'soporterefillstore@gmail.com'
+         ])
+      );
     }
 
     function isValidActiveSubscription(data) {
       return data.keys().hasAll(['v', 'plan', 'status', 'startDate', 'endDate', 'provider']) &&
         data.keys().hasOnly(['v', 'plan', 'status', 'startDate', 'endDate', 'provider',
           'paymentRef', 'orderId', 'amountUsd', 'paidAmount', 'currency',
-          'overpaidAlert', 'activatedBy', 'updatedAt']) &&
+          'overpaidAlert', 'durationDays', 'note', 'activatedBy', 'updatedAt']) &&
         data.v is int &&
-        data.plan is string && data.plan in ['monthly', 'annual'] &&
+        data.plan is string && data.plan in ['monthly', 'quarterly', 'semiannual', 'annual'] &&
         data.status is string && data.status in ['active', 'expired', 'canceled'] &&
         isStr(data, 'startDate', 10, 60) &&
         isStr(data, 'endDate', 10, 60) &&
@@ -365,6 +374,9 @@ service cloud.firestore {
           (data.currency is string && data.currency in ['BS', 'USD'])) &&
         (!('overpaidAlert' in data) || data.overpaidAlert == null ||
           data.overpaidAlert is bool) &&
+        (!('durationDays' in data) || data.durationDays == null ||
+          (data.durationDays is int && data.durationDays >= 0 && data.durationDays <= 3650)) &&
+        isOptStr(data, 'note', 200) &&
         isOptStr(data, 'activatedBy', 120) &&
         isOptStr(data, 'updatedAt', 60);
     }
@@ -375,7 +387,7 @@ service cloud.firestore {
         data.keys().hasOnly(['v', 'plan', 'method', 'reference', 'amountUsd', 'amountBs',
           'rateBs', 'status', 'provider', 'requestedAt']) &&
         data.v is int &&
-        data.plan is string && data.plan in ['monthly', 'annual'] &&
+        data.plan is string && data.plan in ['monthly', 'quarterly', 'semiannual', 'annual'] &&
         data.method is string && data.method in ['pago_movil', 'usdt'] &&
         isStr(data, 'reference', 4, 60) &&
         data.amountUsd is number && data.amountUsd > 0 && data.amountUsd <= 100 &&
@@ -413,7 +425,8 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       allow create, update: if isOwner(userId) && isValidUserProfile(request.resource.data);
       allow delete: if isOwner(userId);
 
@@ -434,16 +447,16 @@ service cloud.firestore {
       }
 
       match /subscription/{docId} {
-        // Active subscription: owner read-only; only admin claim may write.
-        allow get: if isOwner(userId) && docId in ['current', 'pending'];
-        allow create, update: if docId == 'current' && isAdmin() &&
-          isValidActiveSubscription(request.resource.data);
-        allow delete: if (docId == 'current' && isAdmin()) ||
+        // Active subscription: owner read-only; admin may read, list, write, and delete.
+        // Pending payment reference: owner or admin may create/update/delete with strict validation.
+        allow get: if (isOwner(userId) && docId in ['current', 'pending']) || isAdmin();
+        allow list: if isAdmin();
+        allow create, update: if (docId == 'current' && isAdmin() &&
+            isValidActiveSubscription(request.resource.data)) ||
+          (docId == 'pending' && (isOwner(userId) || isAdmin()) &&
+            isValidPendingSubscription(request.resource.data));
+        allow delete: if isAdmin() ||
           (docId == 'pending' && isOwner(userId));
-
-        // Pending payment reference: owner create/update/delete with strict validation.
-        allow create, update: if docId == 'pending' && isOwner(userId) &&
-          isValidPendingSubscription(request.resource.data);
       }
 
       match /settings/{docId} {
@@ -453,6 +466,11 @@ service cloud.firestore {
           (docId == 'alerts' && isValidAlertsSettings(request.resource.data)));
         allow delete: if isOwner(userId) && docId in ['profile', 'alerts'];
       }
+    }
+
+    // Collection group read/list access for Admin Panel queries (e.g. pending manual payments).
+    match /{path=**}/subscription/{docId} {
+      allow get, list: if isAdmin();
     }
 
     // ===============================================================

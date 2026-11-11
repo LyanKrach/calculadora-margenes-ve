@@ -1,23 +1,80 @@
+/// Correos propietarios con acceso al Panel Administrador Pro.
+const List<String> proAdminEmails = [
+  'layankrach@gmail.com',
+  'soporterefillstore@gmail.com',
+];
+
+bool isAdminOwnerEmail(String? email) {
+  final clean = (email ?? '').trim().toLowerCase();
+  return clean.isNotEmpty && proAdminEmails.contains(clean);
+}
+
 /// Planes y modelos compartidos para suscripciones Pro y verificación Pabilo.
 enum ProPlanId {
   monthly,
+  quarterly,
+  semiannual,
   annual;
 
   String get id => name;
 
-  String get displayName =>
-      this == ProPlanId.annual ? 'Pro Anual' : 'Pro Mensual';
+  String get displayName => switch (this) {
+        ProPlanId.monthly => 'Pro Mensual',
+        ProPlanId.quarterly => 'Pro Trimestral',
+        ProPlanId.semiannual => 'Pro 6 Meses',
+        ProPlanId.annual => 'Pro Anual',
+      };
 
-  double get priceUsd => this == ProPlanId.annual ? 15.0 : 1.99;
+  String get shortName => switch (this) {
+        ProPlanId.monthly => 'Mensual',
+        ProPlanId.quarterly => 'Trimestral',
+        ProPlanId.semiannual => '6 Meses',
+        ProPlanId.annual => 'Anual',
+      };
 
-  int get durationDays => this == ProPlanId.annual ? 365 : 30;
+  double get priceUsd => switch (this) {
+        ProPlanId.monthly => 1.99,
+        ProPlanId.quarterly => 4.99,
+        ProPlanId.semiannual => 7.99,
+        ProPlanId.annual => 15.99,
+      };
 
-  int get savePercent => this == ProPlanId.annual ? 37 : 0;
+  String get formattedUsd => switch (this) {
+        ProPlanId.monthly => '\$1,99',
+        ProPlanId.quarterly => '\$4,99',
+        ProPlanId.semiannual => '\$7,99',
+        ProPlanId.annual => '\$15,99',
+      };
+
+  String get periodSuffix => switch (this) {
+        ProPlanId.monthly => '/ mes USDT',
+        ProPlanId.quarterly => '/ 3 meses USDT',
+        ProPlanId.semiannual => '/ 6 meses USDT',
+        ProPlanId.annual => '/ año USDT',
+      };
+
+  int get durationDays => switch (this) {
+        ProPlanId.monthly => 30,
+        ProPlanId.quarterly => 90,
+        ProPlanId.semiannual => 180,
+        ProPlanId.annual => 365,
+      };
+
+  int get savePercent => switch (this) {
+        ProPlanId.monthly => 0,
+        ProPlanId.quarterly => 16,
+        ProPlanId.semiannual => 33,
+        ProPlanId.annual => 33,
+      };
 
   static ProPlanId? tryParse(String? raw) {
-    if (raw == 'annual') return ProPlanId.annual;
-    if (raw == 'monthly') return ProPlanId.monthly;
-    return null;
+    return switch (raw?.trim()) {
+      'monthly' => ProPlanId.monthly,
+      'quarterly' => ProPlanId.quarterly,
+      'semiannual' => ProPlanId.semiannual,
+      'annual' => ProPlanId.annual,
+      _ => null,
+    };
   }
 }
 
@@ -451,6 +508,79 @@ class PabiloVerifyResult {
       expiresAt: _parseIso(json['expiresAt']),
       subscription:
           subMap != null ? SubscriptionState.fromJson(subMap) : null,
+    );
+  }
+}
+
+class AdminUserSummary {
+  final String uid;
+  final String email;
+  final String displayName;
+  final bool isOwner;
+  final bool isPro;
+  final String status;
+  final String? plan;
+  final int daysLeft;
+  final DateTime? endDate;
+  final String? note;
+  final Map<String, dynamic>? pending;
+
+  const AdminUserSummary({
+    required this.uid,
+    required this.email,
+    required this.displayName,
+    required this.isOwner,
+    required this.isPro,
+    required this.status,
+    this.plan,
+    required this.daysLeft,
+    this.endDate,
+    this.note,
+    this.pending,
+  });
+
+  factory AdminUserSummary.fromJson(Map<String, dynamic> json) {
+    final pend = json['pending'];
+    return AdminUserSummary(
+      uid: json['uid']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      displayName: json['displayName']?.toString() ?? '',
+      isOwner: json['isOwner'] == true,
+      isPro: json['isPro'] == true,
+      status: json['status']?.toString() ?? 'free',
+      plan: json['plan']?.toString(),
+      daysLeft: (json['daysLeft'] as num?)?.toInt() ?? 0,
+      endDate: _parseIso(json['endDate']),
+      note: json['note']?.toString(),
+      pending: pend is Map<String, dynamic> ? pend : null,
+    );
+  }
+}
+
+class AdminOverviewResult {
+  final int totalUsers;
+  final int activePro;
+  final int pendingManual;
+  final List<AdminUserSummary> users;
+
+  const AdminOverviewResult({
+    required this.totalUsers,
+    required this.activePro,
+    required this.pendingManual,
+    required this.users,
+  });
+
+  factory AdminOverviewResult.fromJson(Map<String, dynamic> json) {
+    final stats = json['stats'] as Map<String, dynamic>? ?? const {};
+    final rawUsers = json['users'] as List<dynamic>? ?? const [];
+    return AdminOverviewResult(
+      totalUsers: (stats['totalUsers'] as num?)?.toInt() ?? rawUsers.length,
+      activePro: (stats['activePro'] as num?)?.toInt() ?? 0,
+      pendingManual: (stats['pendingManual'] as num?)?.toInt() ?? 0,
+      users: rawUsers
+          .whereType<Map<String, dynamic>>()
+          .map(AdminUserSummary.fromJson)
+          .toList(),
     );
   }
 }

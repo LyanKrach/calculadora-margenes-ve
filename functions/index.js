@@ -9,6 +9,14 @@ const {
   getProPaymentConfigPayload,
   createProCheckout,
   verifyProPayment,
+  normalizeEmail,
+  isOwnerEmail,
+  isAdminDecodedToken,
+  adminListOverview,
+  adminLookupUserByEmail,
+  adminSetUserPro,
+  adminDeactivateUserPro,
+  adminBootstrapOwners,
 } = require("./pro-payments");
 
 if (!admin.apps.length) {
@@ -64,7 +72,29 @@ async function requireAuthUser(req) {
       "Inicia sesión con tu correo o Google para vincular la suscripción Pro a tu cuenta.",
     );
   }
-  return { uid: decoded.uid, email: decoded.email || "" };
+  return { uid: decoded.uid, email: decoded.email || "", decoded };
+}
+
+async function requireAdminUser(req) {
+  const user = await requireAuthUser(req);
+  if (!isAdminDecodedToken(user.decoded)) {
+    if (isOwnerEmail(user.email) && user.decoded && user.decoded.email_verified !== true) {
+      throw new ProPaymentError(
+        403,
+        "EMAIL_NOT_VERIFIED",
+        "Verifica tu correo electrónico o entra con Google para acceder al panel administrador.",
+      );
+    }
+    throw new ProPaymentError(
+      403,
+      "FORBIDDEN_ADMIN",
+      "Esta acción es exclusiva para administradores autorizados.",
+    );
+  }
+  return {
+    uid: user.uid,
+    email: normalizeEmail(user.email),
+  };
 }
 
 function sendPaymentError(res, err) {
@@ -306,6 +336,97 @@ exports.verifyProPayment = functions.https.onRequest(
         runtimeSecrets: readRuntimeSecrets(),
       });
       return res.status(result.httpStatus || 200).json(result);
+    } catch (err) {
+      return sendPaymentError(res, err);
+    }
+  },
+);
+
+/**
+ * Panel administrador para cuentas propietarias (activar/regalar/desactivar Pro).
+ * No requiere secretos de Pabilo, por lo que puede desplegarse de forma independiente.
+ */
+exports.adminManagePro = functions.https.onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 30,
+  },
+  async (req, res) => {
+    applyCors(res, "POST, OPTIONS");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") {
+      return res.status(405).json({ ok: false, message: "Método no permitido. Usa POST." });
+    }
+    try {
+      const adminUser = await requireAdminUser(req);
+      const db = admin.firestore();
+      const auth = admin.auth();
+      await checkRateLimit({
+        db,
+        name: "pro_admin",
+        key: `${adminUser.uid}_${getClientIp(req)}`,
+        maxRequests: 60,
+        windowMs: 60_000,
+      });
+
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const action = String(body.action || "").trim().toLowerCase();
+
+      if (action === "overview") {
+        const result = await adminListOverview({
+          auth,
+          db,
+          limit: body.limit,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "lookup") {
+        const result = await adminLookupUserByEmail({
+          auth,
+          db,
+          email: body.email,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "activate") {
+        const result = await adminSetUserPro({
+          auth,
+          db,
+          uid: body.uid,
+          email: body.email,
+          planId: body.plan,
+          durationDays: body.days,
+          extend: body.extend === true,
+          note: body.note,
+          adminEmail: adminUser.email,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "deactivate") {
+        const result = await adminDeactivateUserPro({
+          auth,
+          db,
+          uid: body.uid,
+          email: body.email,
+          note: body.note,
+          adminEmail: adminUser.email,
+        });
+        return res.status(200).json(result);
+      }
+
+      if (action === "bootstrap_owners") {
+        const result = await adminBootstrapOwners({ auth, db });
+        return res.status(200).json(result);
+      }
+
+      throw new ProPaymentError(
+        400,
+        "INVALID_ACTION",
+        "Acción admin inválida. Usa overview, lookup, activate, deactivate o bootstrap_owners.",
+      );
     } catch (err) {
       return sendPaymentError(res, err);
     }

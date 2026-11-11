@@ -227,10 +227,104 @@ void main() {
         'BP9A8B',
       );
     });
+
+    test('identifica emails administradores propietarios y los 4 planes Pro', () {
+      expect(isAdminOwnerEmail('layankrach@gmail.com'), isTrue);
+      expect(isAdminOwnerEmail('SOPORTEREFILLSTORE@GMAIL.COM'), isTrue);
+      expect(isAdminOwnerEmail('cliente@gmail.com'), isFalse);
+      expect(ProPlanId.monthly.priceUsd, 1.99);
+      expect(ProPlanId.quarterly.priceUsd, 4.99);
+      expect(ProPlanId.semiannual.priceUsd, 7.99);
+      expect(ProPlanId.annual.priceUsd, 15.99);
+    });
+
+    test('SubscriptionService adminOverview, adminActivatePro y adminDeactivatePro funcionan vía HTTP', () async {
+      final mockClient = MockClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        final action = body['action'];
+        if (action == 'overview') {
+          return http.Response(
+            jsonEncode({
+              'ok': true,
+              'stats': {'totalUsers': 1, 'activePro': 1, 'pendingManual': 0},
+              'users': [
+                {
+                  'uid': 'u1',
+                  'email': 'layankrach@gmail.com',
+                  'displayName': 'Layan',
+                  'isOwner': true,
+                  'isPro': true,
+                  'status': 'active',
+                  'plan': 'annual',
+                  'daysLeft': 3650,
+                }
+              ],
+            }),
+            200,
+          );
+        }
+        if (action == 'activate') {
+          return http.Response(
+            jsonEncode({
+              'ok': true,
+              'message': 'Pro activado para amigo@gmail.com',
+              'user': {
+                'uid': 'u2',
+                'email': body['email'],
+                'displayName': 'Amigo',
+                'isOwner': false,
+                'isPro': true,
+                'status': 'active',
+                'plan': body['plan'],
+                'daysLeft': body['days'] ?? 30,
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'message': 'Desactivado',
+            'user': {
+              'uid': 'u2',
+              'email': body['email'],
+              'displayName': 'Amigo',
+              'isOwner': false,
+              'isPro': false,
+              'status': 'canceled',
+              'daysLeft': 0,
+            },
+          }),
+          200,
+        );
+      });
+
+      final service = SubscriptionService.forTest(
+        client: mockClient,
+        tokenProvider: () async => 'admin-jwt',
+      );
+      final ov = await service.fetchAdminOverview();
+      expect(ov.totalUsers, 1);
+      expect(ov.users.first.isOwner, isTrue);
+
+      final act = await service.adminActivatePro(
+        email: 'amigo@gmail.com',
+        plan: ProPlanId.quarterly,
+        days: 30,
+        note: 'Regalo',
+      );
+      expect(act.user.isPro, isTrue);
+      expect(act.user.daysLeft, 30);
+
+      final deact = await service.adminDeactivatePro(email: 'amigo@gmail.com');
+      expect(deact.user.isPro, isFalse);
+      expect(deact.user.status, 'canceled');
+    });
   });
 
   group('ProPlansScreen widget', () {
-    testWidgets('renderiza Planes Mensual/Anual (-37%), selector Pabilo y términos',
+    testWidgets('renderiza los 4 Planes Pro, selector Pabilo y términos',
         (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
@@ -242,9 +336,13 @@ void main() {
 
       expect(find.text('Planes Pro'), findsOneWidget);
       expect(find.text('Pro Anual'), findsOneWidget);
+      expect(find.text('Pro 6 Meses'), findsOneWidget);
+      expect(find.text('Pro Trimestral'), findsOneWidget);
       expect(find.text('Pro Mensual'), findsOneWidget);
-      expect(find.text('RECOMENDADO · Ahorra 37%'), findsOneWidget);
-      expect(find.text('\$15'), findsOneWidget);
+      expect(find.text('RECOMENDADO · Ahorra 33%'), findsOneWidget);
+      expect(find.text('\$15,99'), findsOneWidget);
+      expect(find.text('\$7,99'), findsOneWidget);
+      expect(find.text('\$4,99'), findsOneWidget);
       expect(find.text('\$1,99'), findsOneWidget);
 
       await tester.scrollUntilVisible(

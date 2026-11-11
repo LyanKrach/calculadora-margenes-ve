@@ -60,6 +60,14 @@ class SubscriptionService {
       'https://createprocheckout-yqgkyclg5a-uc.a.run.app';
   static const verifyEndpointUrl =
       'https://verifypropayment-yqgkyclg5a-uc.a.run.app';
+  static const adminEndpointUrl =
+      'https://adminmanagepro-yqgkyclg5a-uc.a.run.app';
+
+  bool get isCurrentUserAdmin {
+    if (!AuthService.isFirebaseInitialized) return false;
+    final user = FirebaseAuth.instance.currentUser;
+    return user != null && !user.isAnonymous && isAdminOwnerEmail(user.email);
+  }
 
   static const _subCachePrefix = 'pro_subscription_cache_v1_';
 
@@ -309,6 +317,95 @@ class SubscriptionService {
       }
     }
     return result;
+  }
+
+  Future<Map<String, dynamic>> _postAdminAction(
+    Map<String, dynamic> payload,
+  ) async {
+    final token = await _requireIdToken();
+    final res = await _client
+        .post(
+          Uri.parse(adminEndpointUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    final body = _decodeJsonMap(res.body);
+    if (res.statusCode >= 200 && res.statusCode < 300 && body['ok'] == true) {
+      return body;
+    }
+    throw ProPaymentException(
+      code: body['code']?.toString() ?? 'ADMIN_ERROR',
+      message: body['message']?.toString() ??
+          'No se pudo ejecutar la acción administrativa.',
+    );
+  }
+
+  Future<AdminOverviewResult> fetchAdminOverview({int limit = 100}) async {
+    final body = await _postAdminAction({
+      'action': 'overview',
+      'limit': limit,
+    });
+    return AdminOverviewResult.fromJson(body);
+  }
+
+  Future<AdminUserSummary> adminLookupByEmail(String email) async {
+    final body = await _postAdminAction({
+      'action': 'lookup',
+      'email': email.trim(),
+    });
+    final userMap = body['user'];
+    if (userMap is! Map<String, dynamic>) {
+      throw const ProPaymentException(
+        code: 'INVALID_RESPONSE',
+        message: 'No se recibió información del usuario.',
+      );
+    }
+    return AdminUserSummary.fromJson(userMap);
+  }
+
+  Future<({AdminUserSummary user, String message})> adminActivatePro({
+    String? uid,
+    String? email,
+    ProPlanId plan = ProPlanId.monthly,
+    int? days,
+    String? note,
+  }) async {
+    final body = await _postAdminAction({
+      'action': 'activate',
+      if (uid != null && uid.trim().isNotEmpty) 'uid': uid.trim(),
+      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      'plan': plan.id,
+      if (days != null) 'days': days,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    });
+    final userMap = body['user'] as Map<String, dynamic>? ?? const {};
+    return (
+      user: AdminUserSummary.fromJson(userMap),
+      message: body['message']?.toString() ?? 'Pro activado correctamente.',
+    );
+  }
+
+  Future<({AdminUserSummary user, String message})> adminDeactivatePro({
+    String? uid,
+    String? email,
+    String? note,
+  }) async {
+    final body = await _postAdminAction({
+      'action': 'deactivate',
+      if (uid != null && uid.trim().isNotEmpty) 'uid': uid.trim(),
+      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    });
+    final userMap = body['user'] as Map<String, dynamic>? ?? const {};
+    return (
+      user: AdminUserSummary.fromJson(userMap),
+      message: body['message']?.toString() ?? 'Pro desactivado.',
+    );
   }
 
   /// Respaldo manual cuando el método elegido aún no tenga Pabilo automático activo.

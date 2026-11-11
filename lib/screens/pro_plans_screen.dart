@@ -10,8 +10,8 @@ import '../services/subscription_service.dart';
 import '../utils/format.dart';
 import 'auth_screen.dart';
 
-/// Pantalla de Planes Pro ($1,99 Mensual / $15 Anual -37%) con
-/// verificación automática de pagos vía Pabilo y respaldo manual.
+/// Pantalla de Planes Pro ($1,99 Mensual · $4,99 Trimestral · $7,99 6 Meses · $15,99 Anual)
+/// con verificación automática vía Pabilo, respaldo manual y Panel Admin propietario.
 class ProPlansScreen extends StatefulWidget {
   final ProPlanId initialPlan;
 
@@ -397,6 +397,10 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
             _buildPlanCards(),
             const SizedBox(height: 16),
             _buildPaymentBox(),
+            if (_subService.isCurrentUserAdmin) ...[
+              const SizedBox(height: 16),
+              _buildAdminEntryCard(),
+            ],
             const SizedBox(height: 14),
             const Text(
               'La calculadora completa, tasas en vivo y brecha cambiaria siempre son gratis. '
@@ -443,9 +447,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     }
 
     if (_subState.isPro) {
-      final planLabel = _subState.plan == 'annual'
-          ? 'Pro Anual (\$15/año)'
-          : 'Pro Mensual (\$1,99/mes)';
+      final parsedPlan = ProPlanId.tryParse(_subState.plan) ?? ProPlanId.monthly;
+      final planLabel = '${parsedPlan.displayName} (${parsedPlan.formattedUsd})';
       final startStr = _subState.startDate != null
           ? dateFmt.format(_subState.startDate!.toLocal())
           : 'Hoy';
@@ -544,7 +547,8 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
 
   Widget _buildPendingCard() {
     final p = _pendingDoc!;
-    final planTxt = p['plan'] == 'annual' ? 'Anual (\$15)' : 'Mensual (\$1,99)';
+    final parsed = ProPlanId.tryParse(p['plan']?.toString()) ?? ProPlanId.monthly;
+    final planTxt = '${parsed.shortName} (${parsed.formattedUsd})';
     final methodTxt = p['method'] == 'usdt' ? 'USDT' : 'Pago Móvil';
     return Card(
       color: Colors.orange.withValues(alpha: 0.12),
@@ -563,13 +567,34 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
       children: [
         _buildSinglePlanCard(
           plan: ProPlanId.annual,
-          badge: 'RECOMENDADO · Ahorra 37%',
-          subtitle: 'Frente a 12 × \$1,99 = \$23,88 al año',
+          badge: 'RECOMENDADO · Ahorra 33%',
+          subtitle: 'Frente a 12 × \$1,99 = \$23,88 al año (365 días)',
           features: const [
             'Productos ilimitados en la nube (app y web)',
             'Historial ilimitado, reportes y exportación Excel/PDF',
             'Revalorización masiva en 1 toque y alertas de brecha',
             'Lista de precios profesional e importación Excel/CSV',
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildSinglePlanCard(
+          plan: ProPlanId.semiannual,
+          badge: '6 Meses · Ahorra 33%',
+          subtitle: 'Frente a 6 × \$1,99 = \$11,94 (180 días)',
+          features: const [
+            'Todas las funciones Pro durante 6 meses continuos',
+            'Productos ilimitados, historial, lote y revalorización',
+            'Reportes Excel/PDF, alertas BCV y soporte prioritario',
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildSinglePlanCard(
+          plan: ProPlanId.quarterly,
+          badge: 'Trimestral · Ahorra 16%',
+          subtitle: 'Frente a 3 × \$1,99 = \$5,97 (90 días)',
+          features: const [
+            'Todas las funciones Pro durante 3 meses continuos',
+            'Catálogo, reportes, lote y lista de precios sin límites',
           ],
         ),
         const SizedBox(height: 12),
@@ -657,7 +682,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    plan == ProPlanId.annual ? '\$15' : '\$1,99',
+                    plan.formattedUsd,
                     style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w900,
@@ -665,7 +690,7 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    plan == ProPlanId.annual ? '/ año USDT' : '/ mes USDT',
+                    plan.periodSuffix,
                     style: const TextStyle(fontSize: 13, color: Colors.grey),
                   ),
                 ],
@@ -998,6 +1023,454 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildAdminEntryCard() {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.5)),
+      ),
+      child: ListTile(
+        leading: Icon(Icons.admin_panel_settings, color: scheme.primary),
+        title: const Text(
+          'Panel Administrador Pro',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text(
+          'Activar, regalar o desactivar Pro en otras cuentas por correo.',
+          style: TextStyle(fontSize: 12),
+        ),
+        trailing: FilledButton(
+          onPressed: _openAdminSheet,
+          child: const Text('Abrir'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAdminSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _ProAdminSheet(subService: _subService),
+    );
+    if (mounted) {
+      await _subService.refreshSubscription();
+    }
+  }
+}
+
+class _ProAdminSheet extends StatefulWidget {
+  final SubscriptionService subService;
+
+  const _ProAdminSheet({required this.subService});
+
+  @override
+  State<_ProAdminSheet> createState() => _ProAdminSheetState();
+}
+
+class _ProAdminSheetState extends State<_ProAdminSheet> {
+  final _emailCtrl = TextEditingController();
+  final _daysCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+
+  ProPlanId _plan = ProPlanId.monthly;
+  bool _loading = true;
+  bool _busy = false;
+  String? _statusMsg;
+  bool _statusIsError = false;
+  AdminUserSummary? _lookupUser;
+  AdminOverviewResult? _overview;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOverview();
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _daysCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOverview() async {
+    setState(() => _loading = true);
+    try {
+      final res = await widget.subService.fetchAdminOverview();
+      if (!mounted) return;
+      setState(() {
+        _overview = res;
+        _statusIsError = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMsg = e.toString();
+        _statusIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _lookup() async {
+    final email = _emailCtrl.text.trim();
+    if (!email.contains('@')) {
+      setState(() {
+        _statusMsg = 'Ingresa un correo válido.';
+        _statusIsError = true;
+      });
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final found = await widget.subService.adminLookupByEmail(email);
+      if (!mounted) return;
+      setState(() {
+        _lookupUser = found;
+        _statusMsg = 'Cuenta encontrada: ${found.email}';
+        _statusIsError = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _lookupUser = null;
+        _statusMsg = e.toString();
+        _statusIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _activate({
+    String? uid,
+    String? email,
+    ProPlanId? plan,
+    int? days,
+    String? note,
+  }) async {
+    final targetEmail = (email ?? _emailCtrl.text).trim();
+    if ((uid == null || uid.isEmpty) && targetEmail.isEmpty) {
+      setState(() {
+        _statusMsg = 'Escribe el correo de la cuenta primero.';
+        _statusIsError = true;
+      });
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final parsedDays = int.tryParse(_daysCtrl.text.trim());
+      final out = await widget.subService.adminActivatePro(
+        uid: uid,
+        email: targetEmail.isNotEmpty ? targetEmail : null,
+        plan: plan ?? _plan,
+        days: days ?? parsedDays,
+        note: note ??
+            (_noteCtrl.text.trim().isNotEmpty
+                ? _noteCtrl.text.trim()
+                : 'Activado desde app'),
+      );
+      if (!mounted) return;
+      setState(() {
+        _lookupUser = out.user;
+        _statusMsg = out.message;
+        _statusIsError = false;
+      });
+      await _loadOverview();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMsg = e.toString();
+        _statusIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deactivate({String? uid, String? email}) async {
+    final targetEmail = (email ?? _emailCtrl.text).trim();
+    if ((uid == null || uid.isEmpty) && targetEmail.isEmpty) {
+      setState(() {
+        _statusMsg = 'Escribe el correo de la cuenta a desactivar.';
+        _statusIsError = true;
+      });
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final out = await widget.subService.adminDeactivatePro(
+        uid: uid,
+        email: targetEmail.isNotEmpty ? targetEmail : null,
+        note: _noteCtrl.text.trim().isNotEmpty
+            ? _noteCtrl.text.trim()
+            : 'Desactivado desde app',
+      );
+      if (!mounted) return;
+      setState(() {
+        _lookupUser = out.user;
+        _statusMsg = out.message;
+        _statusIsError = false;
+      });
+      await _loadOverview();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMsg = e.toString();
+        _statusIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ov = _overview;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.88,
+      minChildSize: 0.5,
+      maxChildSize: 0.96,
+      builder: (_, ctrl) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 12,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: ListView(
+          controller: ctrl,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Panel Administrador Pro',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  tooltip: 'Actualizar',
+                  onPressed: _busy ? null : _loadOverview,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            if (ov != null)
+              Text(
+                '${ov.totalUsers} cuentas · ${ov.activePro} Pro activas · ${ov.pendingManual} pendientes',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Correo de usuario',
+                hintText: 'cliente@gmail.com',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: 'Buscar',
+                  onPressed: _busy ? null : _lookup,
+                  icon: const Icon(Icons.search),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<ProPlanId>(
+                    initialValue: _plan,
+                    decoration: const InputDecoration(
+                      labelText: 'Plan / regalo',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ProPlanId.values
+                        .map(
+                          (p) => DropdownMenuItem(
+                            value: p,
+                            child: Text('${p.shortName} (${p.formattedUsd})'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _plan = v);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 115,
+                  child: TextField(
+                    controller: _daysCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Días (opc)',
+                      hintText: 'Ej. 30',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _noteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Nota (opcional)',
+                hintText: 'Regalo 1 mes / Pago verificado',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _busy ? null : () => _activate(),
+                    child: const Text('Activar / Regalar Pro'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _busy ? null : () => _deactivate(),
+                  child: const Text('Desactivar'),
+                ),
+              ],
+            ),
+            if (_statusMsg != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: (_statusIsError ? Colors.red : scheme.primary)
+                      .withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(_statusMsg!, style: const TextStyle(fontSize: 13)),
+              ),
+            ],
+            if (_lookupUser != null) ...[
+              const SizedBox(height: 12),
+              _buildAdminUserCard(_lookupUser!),
+            ],
+            const SizedBox(height: 16),
+            const Text(
+              'Cuentas recientes',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (ov == null || ov.users.isEmpty)
+              const Text('No hay cuentas cargadas.',
+                  style: TextStyle(color: Colors.grey))
+            else
+              for (final u in ov.users.take(40)) _buildAdminUserCard(u),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminUserCard(AdminUserSummary u) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    u.email.isNotEmpty ? u.email : u.uid,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (u.isPro ? Colors.green : Colors.grey)
+                        .withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    u.isPro
+                        ? 'PRO ${(ProPlanId.tryParse(u.plan)?.shortName ?? '').toUpperCase()} · ${u.daysLeft}d'
+                        : 'GRATIS',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (u.pending != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '⏳ Pago pendiente Ref: ${u.pending!['reference'] ?? u.pending!['method']}',
+                  style: const TextStyle(fontSize: 12, color: Colors.orange),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                ActionChip(
+                  label: const Text('Regalar 1 mes'),
+                  onPressed: _busy
+                      ? null
+                      : () => _activate(
+                            uid: u.uid,
+                            email: u.email,
+                            plan: ProPlanId.monthly,
+                            days: 30,
+                            note: 'Regalo 1 mes',
+                          ),
+                ),
+                ActionChip(
+                  label: const Text('Activar 1 año'),
+                  onPressed: _busy
+                      ? null
+                      : () => _activate(
+                            uid: u.uid,
+                            email: u.email,
+                            plan: ProPlanId.annual,
+                            days: 365,
+                            note: 'Activado 1 año',
+                          ),
+                ),
+                if (u.isPro)
+                  ActionChip(
+                    label: const Text('Desactivar'),
+                    onPressed: _busy
+                        ? null
+                        : () => _deactivate(uid: u.uid, email: u.email),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

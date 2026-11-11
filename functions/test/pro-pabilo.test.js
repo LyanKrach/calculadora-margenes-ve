@@ -5,13 +5,20 @@ const assert = require('node:assert/strict');
 
 const { verifyPayment, normalizeReference } = require('../pabilo');
 const {
+  ADMIN_EMAILS,
   PRO_PLANS,
+  isAdminDecodedToken,
   checkAmount,
   computeSubscriptionDates,
   createProCheckout,
   verifyProPayment,
   checkRateLimit,
   getProPaymentConfigPayload,
+  adminListOverview,
+  adminLookupUserByEmail,
+  adminSetUserPro,
+  adminDeactivateUserPro,
+  adminBootstrapOwners,
 } = require('../pro-payments');
 
 /**
@@ -373,7 +380,7 @@ test('reconciliación tras timeout permite is_new=false para la misma orden y re
     // Intento 1: timeout (AbortError) después de que Pabilo registró internamente la ref
     () => new Error('The operation was aborted'),
     // Intento 2 (mismo usuario/ref tras error): Pabilo devuelve is_new: false
-    () => ({ status: 200, body: { is_new: false, data: { amount: 15000 } } }),
+    () => ({ status: 200, body: { is_new: false, data: { amount: 15990 } } }),
   ]);
 
   await createProCheckout({
@@ -484,7 +491,7 @@ test('Binance Pay / USDT limpia referencia alfanumérica y asigna provider pabil
   const db = createMemoryFirestore();
   const mockFetch = makeMockFetch([
     () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
-    () => ({ status: 200, body: { is_new: true, data: { amount: 15.0 } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 15.99 } } }),
   ]);
 
   await createProCheckout({
@@ -528,7 +535,17 @@ test('getProPaymentConfigPayload nunca expone apiKey ni bankId al cliente', asyn
   assert.equal(serialized.includes('888'), false);
   assert.equal(cfg.methods.pago_movil.autoVerify, true);
   assert.equal(cfg.methods.usdt.autoVerify, true);
-  assert.equal(cfg.plans[1].estimatedBs, 13524.3);
+  assert.equal(cfg.plans.length, 4);
+  assert.deepEqual(
+    cfg.plans.map((p) => [p.id, p.priceUsd]),
+    [
+      ['monthly', 1.99],
+      ['quarterly', 4.99],
+      ['semiannual', 7.99],
+      ['annual', 15.99],
+    ],
+  );
+  assert.equal(cfg.plans[3].estimatedBs, 14416.9);
 });
 
 test('checkRateLimit bloquea cuando excede el límite dentro de la ventana', async () => {
@@ -539,5 +556,136 @@ test('checkRateLimit bloquea cuando excede el límite dentro de la ventana', asy
     () => checkRateLimit({ db, name: 'pro_verify', key: 'u1', maxRequests: 2, windowMs: 60_000, nowMs: 3000 }),
     (err) => err.code === 'RATE_LIMIT_EXCEEDED',
   );
+});
+
+test('planes quarterly ($4.99) y semiannual ($7.99) crean orden y verifican con Pabilo', async () => {
+  const db = createMemoryFirestore();
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 100, date: '2026-11-11' } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 499 } } }),
+    () => ({ status: 200, body: { current: { usd: 100, date: '2026-11-11' } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 799 } } }),
+  ]);
+
+  await createProCheckout({
+    db,
+    uid: 'u_q',
+    planId: 'quarterly',
+    methodId: 'pago_movil',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    orderIdGenerator: () => 'ord_q_1',
+  });
+  const resQ = await verifyProPayment({
+    db,
+    uid: 'u_q',
+    orderId: 'ord_q_1',
+    rawReference: '123456',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+  assert.equal(resQ.ok, true);
+  assert.equal(resQ.subscription.plan, 'quarterly');
+  assert.equal(resQ.subscription.amountUsd, 4.99);
+
+  await createProCheckout({
+    db,
+    uid: 'u_s',
+    planId: 'semiannual',
+    methodId: 'pago_movil',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    orderIdGenerator: () => 'ord_s_1',
+  });
+  const resS = await verifyProPayment({
+    db,
+    uid: 'u_s',
+    orderId: 'ord_s_1',
+    rawReference: '654321',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+  assert.equal(resS.ok, true);
+  assert.equal(resS.subscription.plan, 'semiannual');
+  assert.equal(resS.subscription.amountUsd, 7.99);
+});
+
+test('panel admin: autoriza solo owners verificados, activa/regala y desactiva Pro correctamente', async () => {
+  assert.deepEqual([...ADMIN_EMAILS], ['layankrach@gmail.com', 'soporterefillstore@gmail.com']);
+  assert.equal(isAdminDecodedToken({ email: 'layankrach@gmail.com', email_verified: true }), true);
+  assert.equal(isAdminDecodedToken({ email: 'SOPORTEREFILLSTORE@GMAIL.COM', email_verified: true }), true);
+  assert.equal(isAdminDecodedToken({ email: 'layankrach@gmail.com', email_verified: false }), false);
+  assert.equal(isAdminDecodedToken({ email: 'otro@gmail.com', email_verified: true }), false);
+  assert.equal(isAdminDecodedToken({ email: 'otro@gmail.com', admin: true }), true);
+
+  const authUsers = [
+    { uid: 'uid_owner_1', email: 'layankrach@gmail.com', emailVerified: true, displayName: 'Layan', metadata: {} },
+    { uid: 'uid_owner_2', email: 'soporterefillstore@gmail.com', emailVerified: true, displayName: 'Soporte', metadata: {} },
+    { uid: 'uid_cliente', email: 'cliente@tienda.com', emailVerified: true, displayName: 'Cliente', metadata: {} },
+  ];
+  const mockAuth = {
+    async listUsers() { return { users: authUsers }; },
+    async getUser(uid) {
+      const found = authUsers.find((u) => u.uid === uid);
+      if (!found) throw new Error('not-found');
+      return found;
+    },
+    async getUserByEmail(email) {
+      const norm = String(email || '').trim().toLowerCase();
+      const found = authUsers.find((u) => u.email.toLowerCase() === norm);
+      if (!found) throw new Error('not-found');
+      return found;
+    },
+  };
+
+  const db = createMemoryFirestore({
+    'users/uid_cliente/subscription/pending': {
+      plan: 'quarterly',
+      method: 'pago_movil',
+      reference: '998877',
+      status: 'pending',
+    },
+  });
+
+  const nowMs = Date.UTC(2026, 10, 11, 12, 0, 0);
+  const boot = await adminBootstrapOwners({ auth: mockAuth, db, nowMs });
+  assert.equal(boot.owners.every((o) => o.status === 'activated'), true);
+
+  const lookup = await adminLookupUserByEmail({ auth: mockAuth, db, email: 'CLIENTE@TIENDA.COM', nowMs });
+  assert.equal(lookup.user.uid, 'uid_cliente');
+  assert.equal(lookup.user.isPro, false);
+  assert.equal(lookup.user.pending.reference, '998877');
+
+  const act = await adminSetUserPro({
+    auth: mockAuth,
+    db,
+    email: 'cliente@tienda.com',
+    planId: 'monthly',
+    durationDays: 30,
+    note: 'Regalo mes amigo',
+    adminEmail: 'layankrach@gmail.com',
+    nowMs,
+  });
+  assert.equal(act.ok, true);
+  assert.equal(act.user.isPro, true);
+  assert.equal(act.user.daysLeft, 30);
+  assert.equal(act.user.pending, null);
+
+  const overview = await adminListOverview({ auth: mockAuth, db, nowMs });
+  assert.equal(overview.stats.totalUsers, 3);
+  assert.equal(overview.stats.activePro, 3);
+  assert.equal(overview.stats.pendingManual, 0);
+
+  const deact = await adminDeactivateUserPro({
+    auth: mockAuth,
+    db,
+    uid: 'uid_cliente',
+    note: 'Fin de prueba',
+    adminEmail: 'soporterefillstore@gmail.com',
+    nowMs: nowMs + 1000,
+  });
+  assert.equal(deact.ok, true);
+  assert.equal(deact.user.isPro, false);
+  assert.equal(deact.user.status, 'canceled');
 });
 
