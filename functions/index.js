@@ -17,6 +17,7 @@ if (!admin.apps.length) {
 
 const PABILO_API_KEY = defineSecret("PABILO_API_KEY");
 const PABILO_USER_BANK_ID = defineSecret("PABILO_USER_BANK_ID");
+const PABILO_BINANCE_USER_BANK_ID = defineSecret("PABILO_BINANCE_USER_BANK_ID");
 
 function applyCors(res, methods = "POST, OPTIONS") {
   res.set("Access-Control-Allow-Origin", "*");
@@ -36,7 +37,8 @@ function readRuntimeSecrets() {
   return {
     apiKey: PABILO_API_KEY.value() || process.env.PABILO_API_KEY || "",
     userBankId: PABILO_USER_BANK_ID.value() || process.env.PABILO_USER_BANK_ID || "",
-    binanceUserBankId: process.env.PABILO_BINANCE_USER_BANK_ID || "",
+    binanceUserBankId:
+      PABILO_BINANCE_USER_BANK_ID.value() || process.env.PABILO_BINANCE_USER_BANK_ID || "",
     baseUrl: process.env.PABILO_BASE_URL || "",
   };
 }
@@ -203,7 +205,7 @@ exports.getProPaymentConfig = functions.https.onRequest(
   {
     cors: true,
     timeoutSeconds: 20,
-    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID],
+    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID, PABILO_BINANCE_USER_BANK_ID],
   },
   async (req, res) => {
     applyCors(res, "GET, POST, OPTIONS");
@@ -238,7 +240,7 @@ exports.createProCheckout = functions.https.onRequest(
   {
     cors: true,
     timeoutSeconds: 25,
-    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID],
+    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID, PABILO_BINANCE_USER_BANK_ID],
   },
   async (req, res) => {
     applyCors(res, "POST, OPTIONS");
@@ -279,7 +281,7 @@ exports.verifyProPayment = functions.https.onRequest(
   {
     cors: true,
     timeoutSeconds: 60,
-    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID],
+    secrets: [PABILO_API_KEY, PABILO_USER_BANK_ID, PABILO_BINANCE_USER_BANK_ID],
   },
   async (req, res) => {
     applyCors(res, "POST, OPTIONS");

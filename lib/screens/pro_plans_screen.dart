@@ -208,10 +208,11 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
     if (_verifying) return;
     setState(() {
       _verifying = true;
-      _statusBanner = const _PayBanner(
+      _statusBanner = _PayBanner(
         tone: _BannerTone.info,
-        message:
-            'Verificando tu referencia automáticamente con Pabilo… Si pagaste vía BDV puede tardar 15 a 35 segundos, no cierres esta pantalla.',
+        message: _selectedMethod == ProPaymentMethod.pagoMovil
+            ? 'Verificando tu referencia automáticamente con Pabilo… Si pagaste vía BDV puede tardar 15 a 35 segundos, no cierres esta pantalla.'
+            : 'Verificando tu orden de Binance Pay automáticamente con Pabilo… Un momento por favor, no cierres esta pantalla.',
       );
     });
 
@@ -843,11 +844,13 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
               _buildInfoRow('Banco', pm.bank),
               _buildInfoRow('Cédula / RIF', pm.cedulaRif),
               _buildInfoRow('Teléfono', pm.phone),
-              _buildInfoRow('Titular', pm.holder),
+              if (pm.holder.trim().isNotEmpty)
+                _buildInfoRow('Titular', pm.holder),
             ] else ...[
               _buildInfoRow('Red / Canal', usdt.network),
               _buildInfoRow('Binance Pay ID', usdt.binanceId),
-              _buildInfoRow('Dirección USDT', usdt.address),
+              if (usdt.address.trim().isNotEmpty)
+                _buildInfoRow('Dirección USDT', usdt.address),
             ],
             const SizedBox(height: 14),
             TextField(
@@ -858,10 +861,10 @@ class _ProPlansScreenState extends State<ProPlansScreen> {
               decoration: InputDecoration(
                 labelText: _selectedMethod == ProPaymentMethod.pagoMovil
                     ? 'Número de referencia bancaria'
-                    : 'ID de orden Binance / TxID',
+                    : 'ID de orden de Binance Pay',
                 hintText: _selectedMethod == ProPaymentMethod.pagoMovil
-                    ? 'Ej. últimos 6-8 dígitos o referencia completa'
-                    : 'Ej. ID de orden o hash de transacción',
+                    ? 'Ej. últimos 6-8 dígitos o referencia completa BDV'
+                    : 'Ej. ID de orden de Binance Pay (verificado por Pabilo)',
                 prefixIcon: const Icon(Icons.receipt_long_outlined),
               ),
             ),

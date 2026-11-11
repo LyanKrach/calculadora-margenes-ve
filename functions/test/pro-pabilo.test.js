@@ -603,3 +603,71 @@ test('planes quarterly ($4.99) y semiannual ($7.99) crean orden y verifican con 
   assert.equal(resS.subscription.amountUsd, 7.99);
 });
 
+test('configuración pública por defecto expone BDV 0102 y Binance Pay ID 916942742 y enruta Pabilo por bankId separado', async () => {
+  const db = createMemoryFirestore();
+  const mockFetch = makeMockFetch([
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 1.99 } } }),
+    () => ({ status: 200, body: { current: { usd: 900, date: '2026-11-11' } } }),
+    () => ({ status: 200, body: { is_new: true, data: { amount: 1791 } } }),
+  ]);
+
+  const cleanEnv = {
+    PABILO_API_KEY: 'test-pabilo-secret',
+    PABILO_USER_BANK_ID: '777',
+    PABILO_BINANCE_USER_BANK_ID: '888',
+  };
+  const cfg = await getProPaymentConfigPayload({ db, fetchImpl: mockFetch, env: cleanEnv });
+  assert.equal(cfg.methods.pago_movil.bank, 'Banco de Venezuela (BDV · 0102)');
+  assert.equal(cfg.methods.pago_movil.cedulaRif, '31955598');
+  assert.equal(cfg.methods.pago_movil.phone, '04220336568');
+  assert.equal(cfg.methods.pago_movil.autoVerify, true);
+  assert.equal(cfg.methods.usdt.network, 'Binance Pay (USDT)');
+  assert.equal(cfg.methods.usdt.binanceId, '916942742');
+  assert.equal(cfg.methods.usdt.autoVerify, true);
+
+  await createProCheckout({
+    db,
+    uid: 'u_bp_route',
+    planId: 'monthly',
+    methodId: 'usdt',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    orderIdGenerator: () => 'ord_bp_route',
+  });
+  const binRes = await verifyProPayment({
+    db,
+    uid: 'u_bp_route',
+    orderId: 'ord_bp_route',
+    rawReference: '319400112233',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+  assert.equal(binRes.ok, true);
+  assert.equal(binRes.subscription.provider, 'pabilo_binance');
+  assert.ok(mockFetch.calls[2].url.includes('/userbankpayment/888/betaserio'));
+
+  await createProCheckout({
+    db,
+    uid: 'u_pm_route',
+    planId: 'monthly',
+    methodId: 'pago_movil',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+    orderIdGenerator: () => 'ord_pm_route',
+  });
+  const pmRes = await verifyProPayment({
+    db,
+    uid: 'u_pm_route',
+    orderId: 'ord_pm_route',
+    rawReference: '00112233',
+    fetchImpl: mockFetch,
+    env: TEST_ENV,
+  });
+  assert.equal(pmRes.ok, true);
+  assert.equal(pmRes.subscription.provider, 'pabilo_bdv');
+  assert.ok(mockFetch.calls[4].url.includes('/userbankpayment/777/betaserio'));
+});
+
+

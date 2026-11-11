@@ -50,7 +50,7 @@ const PAYMENT_METHODS = Object.freeze({
   }),
   usdt: Object.freeze({
     id: 'usdt',
-    label: 'USDT / Binance Pay',
+    label: 'Binance Pay (USDT)',
     currency: 'USD',
     allowLetters: true,
     minRefLength: 6,
@@ -243,15 +243,15 @@ async function loadPublicPaymentConfig({ db, env = process.env, runtimeSecrets =
 
   const publicConfig = {
     pagoMovil: {
-      bank: String(pmDoc.banco || pmDoc.bank || env.PRO_PM_BANK || '').trim(),
-      cedulaRif: String(pmDoc.cedulaRif || env.PRO_PM_CEDULA || '').trim(),
-      phone: String(pmDoc.telefono || pmDoc.phone || env.PRO_PM_PHONE || '').trim(),
+      bank: String(pmDoc.banco || pmDoc.bank || env.PRO_PM_BANK || 'Banco de Venezuela (BDV · 0102)').trim(),
+      cedulaRif: String(pmDoc.cedulaRif || env.PRO_PM_CEDULA || '31955598').trim(),
+      phone: String(pmDoc.telefono || pmDoc.phone || env.PRO_PM_PHONE || '04220336568').trim(),
       holder: String(pmDoc.titular || pmDoc.holder || env.PRO_PM_HOLDER || '').trim(),
       autoVerify: Boolean(apiKey && pmBankId),
     },
     usdt: {
-      network: String(usdtDoc.red || usdtDoc.network || env.PRO_USDT_NETWORK || 'Binance Pay / TRC20').trim(),
-      binanceId: String(usdtDoc.binanceId || env.PRO_BINANCE_PAY_ID || '').trim(),
+      network: String(usdtDoc.red || usdtDoc.network || env.PRO_USDT_NETWORK || 'Binance Pay (USDT)').trim(),
+      binanceId: String(usdtDoc.binanceId || env.PRO_BINANCE_PAY_ID || '916942742').trim(),
       address: String(usdtDoc.direccion || usdtDoc.address || env.PRO_USDT_ADDRESS || '').trim(),
       autoVerify: Boolean(apiKey && binanceBankId),
     },

@@ -236,6 +236,14 @@ void main() {
       expect(ProPlanId.quarterly.priceUsd, 4.99);
       expect(ProPlanId.semiannual.priceUsd, 7.99);
       expect(ProPlanId.annual.priceUsd, 15.99);
+
+      const defCfg = ProPaymentConfig();
+      expect(defCfg.pagoMovil.cedulaRif, '31955598');
+      expect(defCfg.pagoMovil.phone, '04220336568');
+      expect(defCfg.pagoMovil.autoVerify, isTrue);
+      expect(defCfg.usdt.network, 'Binance Pay (USDT)');
+      expect(defCfg.usdt.binanceId, '916942742');
+      expect(defCfg.usdt.autoVerify, isTrue);
     });
 
     test('SubscriptionService adminOverview, adminActivatePro y adminDeactivatePro funcionan vía HTTP', () async {
@@ -351,7 +359,15 @@ void main() {
         scrollable: find.byType(Scrollable),
       );
       expect(find.text('Pago Móvil (BDV)'), findsOneWidget);
-      expect(find.text('USDT / Binance Pay'), findsOneWidget);
+      expect(find.text('Binance Pay (USDT)'), findsOneWidget);
+      expect(find.text('31955598'), findsOneWidget);
+      expect(find.text('04220336568'), findsOneWidget);
+      expect(find.text('Verificar pago y activar Pro'), findsOneWidget);
+
+      await tester.tap(find.text('Binance Pay (USDT)'));
+      await tester.pump();
+      expect(find.text('916942742'), findsOneWidget);
+      expect(find.text('Pabilo automático'), findsOneWidget);
       expect(find.text('Verificar pago y activar Pro'), findsOneWidget);
     });
   });

@@ -85,7 +85,7 @@ enum ProPaymentMethod {
   String get id => this == ProPaymentMethod.usdt ? 'usdt' : 'pago_movil';
 
   String get label =>
-      this == ProPaymentMethod.usdt ? 'USDT / Binance Pay' : 'Pago Móvil (BDV)';
+      this == ProPaymentMethod.usdt ? 'Binance Pay (USDT)' : 'Pago Móvil (BDV)';
 
   String get currency => this == ProPaymentMethod.usdt ? 'USD' : 'BS';
 
@@ -290,8 +290,8 @@ class PagoMovilPublicInfo {
 
   const PagoMovilPublicInfo({
     this.bank = 'Banco de Venezuela (BDV · 0102)',
-    this.cedulaRif = '',
-    this.phone = '',
+    this.cedulaRif = '31955598',
+    this.phone = '04220336568',
     this.holder = '',
     this.autoVerify = true,
   });
@@ -299,10 +299,12 @@ class PagoMovilPublicInfo {
   factory PagoMovilPublicInfo.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const PagoMovilPublicInfo();
     final bank = (json['bank'] ?? json['banco'] ?? '').toString().trim();
+    final ced = (json['cedulaRif'] ?? '').toString().trim();
+    final phone = (json['phone'] ?? json['telefono'] ?? '').toString().trim();
     return PagoMovilPublicInfo(
       bank: bank.isNotEmpty ? bank : 'Banco de Venezuela (BDV · 0102)',
-      cedulaRif: (json['cedulaRif'] ?? '').toString().trim(),
-      phone: (json['phone'] ?? json['telefono'] ?? '').toString().trim(),
+      cedulaRif: ced.isNotEmpty ? ced : '31955598',
+      phone: phone.isNotEmpty ? phone : '04220336568',
       holder: (json['holder'] ?? json['titular'] ?? '').toString().trim(),
       autoVerify: json['autoVerify'] is bool ? json['autoVerify'] as bool : true,
     );
@@ -316,21 +318,22 @@ class UsdtPublicInfo {
   final bool autoVerify;
 
   const UsdtPublicInfo({
-    this.network = 'Binance Pay / USDT (TRC20 o BEP20)',
-    this.binanceId = '',
+    this.network = 'Binance Pay (USDT)',
+    this.binanceId = '916942742',
     this.address = '',
-    this.autoVerify = false,
+    this.autoVerify = true,
   });
 
   factory UsdtPublicInfo.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const UsdtPublicInfo();
     final net = (json['network'] ?? json['red'] ?? '').toString().trim();
+    final binId = (json['binanceId'] ?? '').toString().trim();
     return UsdtPublicInfo(
-      network: net.isNotEmpty ? net : 'Binance Pay / USDT (TRC20 o BEP20)',
-      binanceId: (json['binanceId'] ?? '').toString().trim(),
+      network: net.isNotEmpty ? net : 'Binance Pay (USDT)',
+      binanceId: binId.isNotEmpty ? binId : '916942742',
       address: (json['address'] ?? json['direccion'] ?? '').toString().trim(),
       autoVerify:
-          json['autoVerify'] is bool ? json['autoVerify'] as bool : false,
+          json['autoVerify'] is bool ? json['autoVerify'] as bool : true,
     );
   }
 }
