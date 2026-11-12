@@ -56,3 +56,8 @@ android/app/google-services.json
 lib/firebase_options.dart
 
 
+# Local Antigravity skills & rules
+.agent/
+.agents/
+.antigravityrules
+AGENTS.md
