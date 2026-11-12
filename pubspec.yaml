@@ -1,7 +1,7 @@
 name: calculadora_margenes_ve
 description: "Calculadora de márgenes para vendedores en Venezuela: costo en USD, tasa del día (BCV, Binance USDT, Euro BCV o personalizada), comisiones y margen deseado → precio de venta en bolívares sin perder dinero."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.8.0
