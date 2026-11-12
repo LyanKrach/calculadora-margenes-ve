@@ -48,14 +48,9 @@ android {
 
     buildTypes {
         release {
-            // Con key.properties: firma de release (Play Store).
-            // Sin key.properties: firma debug, solo para probar el AAB/APK
-            // en tu teléfono; ese artefacto NO se sube a Play Store.
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            // Apunta explícitamente a signingConfigs.release; sin key.properties
+            // el build de release falla en lugar de usar la firma debug.
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
         }
