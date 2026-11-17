@@ -215,7 +215,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ? 'Invitado anónimo (no sincroniza con la web)'
           : (user.email ?? 'Usuario');
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
           color: context.appColors.primary.withValues(alpha: 0.10),
           border: Border(
@@ -242,7 +242,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       );
     } else {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         color: Colors.amber.withValues(alpha: 0.18),
         child: Row(
           children: [
@@ -316,13 +316,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     final isPro = _subState.isPro;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        color: context.appColors.surface,
         border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          bottom: BorderSide(color: context.appColors.borderSubtle),
         ),
       ),
       child: Row(
@@ -566,7 +564,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _buildAccountBanner(),
         _buildPlanQuotaBanner(),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -583,7 +581,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       : null,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -593,7 +591,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       selected: _overrideSource == null,
                       onSelected: (_) => setState(() => _overrideSource = null),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     for (final s in [
                       RateSource.bcvUsd,
                       RateSource.binanceUsdt,
@@ -609,18 +607,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           () => _overrideSource = sel ? s : null,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                     ],
                   ],
                 ),
               ),
               if (_products.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: _openSharePriceListModal,
-                    icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: context.appColors.surface,
+                      side: BorderSide(
+                        color: context.appColors.primary.withValues(alpha: 0.55),
+                        width: 1.2,
+                      ),
+                    ),
+                    icon: Icon(
+                      Icons.playlist_add_check_rounded,
+                      size: 19,
+                      color: context.appColors.primary,
+                    ),
                     label: const Text('Compartir lista de precios por WhatsApp'),
                   ),
                 ),
@@ -644,14 +653,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                   'y ver su precio en bolívares al instante todos los días.'
                               : 'No se encontraron productos que coincidan con "$query".',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
+                      style: TextStyle(color: context.appColors.textSecondary),
                     ),
                   ),
                 )
               : RefreshIndicator(
                   onRefresh: _refreshAll,
                   child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 96),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
                       final item = filtered[index];
@@ -663,11 +672,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               item.commissionPaymentMethod +
                               item.commissionOther) *
                           100;
+                      final colors = context.appColors;
+                      final isDark =
+                          Theme.of(context).brightness == Brightness.dark;
 
                       return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
+                        margin: const EdgeInsets.only(bottom: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: colors.primary.withValues(
+                              alpha: isDark ? 0.28 : 0.22,
+                            ),
+                          ),
+                        ),
                         child: Padding(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(18),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -681,22 +701,25 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         Text(
                                           item.name,
                                           style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16.5,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        if (item.category.isNotEmpty)
+                                        if (item.category.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
                                           Text(
                                             item.category,
                                             style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: context.appColors.primary,
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: colors.primary,
                                             ),
                                           ),
+                                        ],
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(width: 10),
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
@@ -710,34 +733,34 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                           fontFeatures: const [
                                             FontFeature.tabularFigures(),
                                           ],
-                                          color: context.appColors.primary,
+                                          color: colors.primary,
                                         ),
                                       ),
                                       Text(
                                         '${source.label} (${rate > 0 ? fmtRate(rate) : "—"})',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: context.appColors.textSecondary,
+                                          color: colors.textSecondary,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 10),
                               Text(
                                 'Costo: \$${fmtUsd(item.costUsd)} · Margen: ${item.marginPercent.toStringAsFixed(1)}% (${item.marginMode.shortLabel}) · '
                                 'Comisiones: ${totalCommPct.toStringAsFixed(1)}%'
                                 '${bd != null && rate > 0 ? ' · Ganancia: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / rate)})' : ''}',
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  color: context.appColors.textSecondary,
+                                  fontSize: 12.5,
+                                  color: colors.textSecondary,
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 14),
                               Wrap(
                                 spacing: 8,
-                                runSpacing: 6,
+                                runSpacing: 8,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   if (priceBs != null) ...[
@@ -749,12 +772,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                       ),
                                       style: FilledButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 8,
+                                          horizontal: 18,
+                                          vertical: 10,
                                         ),
                                         textStyle: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                       icon: const Icon(Icons.copy, size: 16),
@@ -767,12 +790,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         priceBs,
                                       ),
                                       style: OutlinedButton.styleFrom(
+                                        backgroundColor: colors.surfaceElevated,
+                                        side: BorderSide(
+                                          color: colors.primary
+                                              .withValues(alpha: 0.45),
+                                        ),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 8,
+                                          horizontal: 16,
+                                          vertical: 10,
                                         ),
                                       ),
-                                      icon: const Icon(Icons.send_outlined, size: 16),
+                                      icon: Icon(
+                                        Icons.send_outlined,
+                                        size: 16,
+                                        color: colors.primary,
+                                      ),
                                       label: const Text('WhatsApp'),
                                     ),
                                   ],
@@ -780,7 +812,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                     icon: Icon(
                                       Icons.edit_outlined,
                                       size: 20,
-                                      color: context.appColors.textSecondary,
+                                      color: colors.textSecondary,
                                     ),
                                     tooltip: 'Editar producto',
                                     onPressed: () => _openProductForm(existing: item),
@@ -789,7 +821,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                     icon: Icon(
                                       Icons.delete_outline,
                                       size: 20,
-                                      color: context.appColors.textSecondary,
+                                      color: colors.textSecondary,
                                     ),
                                     tooltip: 'Eliminar producto',
                                     onPressed: () => _deleteProduct(item),
@@ -837,13 +869,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _buildAccountBanner(),
         _buildPlanQuotaBanner(),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Últimos ${_history.length} productos calculados',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: context.appColors.textSecondary,
+                ),
               ),
               TextButton.icon(
                 onPressed: () async {
@@ -859,7 +894,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
             itemCount: _history.length,
             itemBuilder: (context, index) {
               final entry = _history[index];
@@ -868,7 +903,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       entry.commissionOther) *
                   100;
               return Card(
-                margin: const EdgeInsets.only(bottom: 8),
+                margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
                   title: Text(
                     entry.title,

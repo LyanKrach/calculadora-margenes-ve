@@ -81,9 +81,21 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
+          color: context.appColors.surface,
           border: Border(
-            top: BorderSide(color: context.appColors.borderSubtle),
+            top: BorderSide(color: context.appColors.borderStrong, width: 1),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark
+                    ? 0.35
+                    : 0.06,
+              ),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
+            ),
+          ],
         ),
         child: NavigationBar(
           selectedIndex: _index,

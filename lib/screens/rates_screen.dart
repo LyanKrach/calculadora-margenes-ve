@@ -65,7 +65,7 @@ class _RatesScreenState extends State<RatesScreen> {
           : RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 children: [
                   for (final source in [
                     RateSource.bcvUsd,
@@ -73,48 +73,63 @@ class _RatesScreenState extends State<RatesScreen> {
                     RateSource.euroBcv,
                   ])
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: Card(
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 6,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 16,
                           ),
-                          title: Text(
-                            source.label,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      source.label,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_sourceDetail(source)}\n'
+                                      '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
+                                      'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: context.appColors.textSecondary,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _rates[source] == null
+                                    ? '—'
+                                    : '${fmtRate(_rates[source]!.value)} ${source.unit}',
+                                textAlign: TextAlign.end,
+                                style: AppTypography.rateValue(context),
+                              ),
+                            ],
                           ),
-                          subtitle: Text(
-                            '${_sourceDetail(source)}\n'
-                            '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
-                            'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.appColors.textSecondary,
-                            ),
-                          ),
-                          trailing: Text(
-                            _rates[source] == null
-                                ? '—'
-                                : '${fmtRate(_rates[source]!.value)} ${source.unit}',
-                            style: AppTypography.rateValue(context),
-                          ),
-                          isThreeLine: true,
                         ),
                       ),
                     ),
                   if ((_rates[RateSource.bcvUsd]?.value ?? 0) > 0 &&
                       (_rates[RateSource.binanceUsdt]?.value ?? 0) > 0) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     _buildGapCard(
                       context: context,
                       bcvRate: _rates[RateSource.bcvUsd]!.value,
                       binanceRate: _rates[RateSource.binanceUsdt]!.value,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 20),
                     RatesBarChart(
                       bcvRate: _rates[RateSource.bcvUsd]!.value,
                       binanceRate: _rates[RateSource.binanceUsdt]!.value,
@@ -122,23 +137,29 @@ class _RatesScreenState extends State<RatesScreen> {
                       snapshots: _snapshots,
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 20),
                   Card(
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.info_outline,
-                        color: context.appColors.textSecondary,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 4,
                       ),
-                      title: const Text(
-                        'Modo sin conexión',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        'Si no hay internet, la app muestra la última tasa guardada '
-                        'con su fecha y hora.',
-                        style: TextStyle(
-                          fontSize: 12,
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.info_outline,
                           color: context.appColors.textSecondary,
+                        ),
+                        title: const Text(
+                          'Modo sin conexión',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          'Si no hay internet, la app muestra la última tasa guardada '
+                          'con su fecha y hora.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.appColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),
@@ -168,21 +189,21 @@ class _RatesScreenState extends State<RatesScreen> {
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: accentColor.withValues(alpha: 0.55),
-          width: 1.3,
+          color: accentColor.withValues(alpha: 0.65),
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withValues(alpha: isDark ? 0.12 : 0.08),
-            blurRadius: 16,
+            color: accentColor.withValues(alpha: isDark ? 0.18 : 0.10),
+            blurRadius: 20,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -196,7 +217,9 @@ class _RatesScreenState extends State<RatesScreen> {
                 Expanded(
                   child: Text(
                     'Brecha Cambiaria (Binance vs BCV)',
-                    style: AppTypography.sectionTitle(context),
+                    style: AppTypography.sectionTitle(context).copyWith(
+                      color: accentColor,
+                    ),
                   ),
                 ),
                 Container(

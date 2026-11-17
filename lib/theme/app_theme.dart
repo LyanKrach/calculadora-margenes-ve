@@ -40,35 +40,35 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color danger;
 
   static const AppColors dark = AppColors(
-    background: Color(0xFF0A0E13),
-    surface: Color(0xFF12181F),
-    surfaceElevated: Color(0xFF1A222C),
-    borderSubtle: Color(0x14FFFFFF), // blanco al 8%
-    borderStrong: Color(0x24FFFFFF), // blanco al 14%
+    background: Color(0xFF080C10),
+    surface: Color(0xFF161E27),
+    surfaceElevated: Color(0xFF1E2937),
+    borderSubtle: Color(0x1CFFFFFF), // blanco al 11%
+    borderStrong: Color(0x30FFFFFF), // blanco al 19%
     primary: Color(0xFF22C55E),
     primaryDark: Color(0xFF16A34A),
-    heroGradientStart: Color(0xFF133322),
-    heroGradientEnd: Color(0xFF0D1C14),
-    heroBorder: Color(0x7322C55E),
+    heroGradientStart: Color(0xFF16A34A),
+    heroGradientEnd: Color(0xFF15803D),
+    heroBorder: Color(0xCC4ADE80),
     textPrimary: Color(0xFFF1F5F9),
-    textSecondary: Color(0xFF94A3B8),
-    textMuted: Color(0xFF64748B),
+    textSecondary: Color(0xFFA3B3C6),
+    textMuted: Color(0xFF718399),
     amber: Color(0xFFF59E0B),
     blue: Color(0xFF3B82F6),
     danger: Color(0xFFEF4444),
   );
 
   static const AppColors light = AppColors(
-    background: Color(0xFFF4F7FA),
+    background: Color(0xFFF1F5F9),
     surface: Color(0xFFFFFFFF),
-    surfaceElevated: Color(0xFFEDF2F7),
-    borderSubtle: Color(0xFFE2E8F0),
+    surfaceElevated: Color(0xFFE8EEF5),
+    borderSubtle: Color(0xFFD8E1EC),
     borderStrong: Color(0xFFCBD5E1),
     primary: Color(0xFF16A34A),
     primaryDark: Color(0xFF15803D),
-    heroGradientStart: Color(0xFFECFDF5),
-    heroGradientEnd: Color(0xFFD1FAE5),
-    heroBorder: Color(0x6616A34A),
+    heroGradientStart: Color(0xFF16A34A),
+    heroGradientEnd: Color(0xFF15803D),
+    heroBorder: Color(0xFF22C55E),
     textPrimary: Color(0xFF0F172A),
     textSecondary: Color(0xFF475569),
     textMuted: Color(0xFF64748B),
@@ -169,9 +169,9 @@ class AppTypography {
 
   static TextStyle sectionTitle(BuildContext context) {
     return TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.w600,
-      letterSpacing: -0.1,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.2,
       color: context.appColors.textPrimary,
     );
   }
@@ -179,15 +179,15 @@ class AppTypography {
   static TextStyle overlineLabel(BuildContext context) {
     return TextStyle(
       fontSize: 12,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.7,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8,
       color: context.appColors.textSecondary,
     );
   }
 
   static TextStyle rateValue(BuildContext context) {
     return TextStyle(
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: FontWeight.w700,
       color: context.appColors.textPrimary,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -262,7 +262,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: colors.borderSubtle),
         ),
       ),
@@ -270,139 +270,164 @@ class AppTheme {
         filled: true,
         fillColor: colors.surfaceElevated,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        labelStyle: TextStyle(color: colors.textSecondary, fontSize: 13),
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        labelStyle: TextStyle(
+          color: colors.textSecondary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
         hintStyle: TextStyle(color: colors.textMuted, fontSize: 14),
         prefixStyle: TextStyle(
           color: colors.textSecondary,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           fontSize: 15,
         ),
         suffixStyle: TextStyle(
           color: colors.textSecondary,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           fontSize: 14,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colors.borderSubtle),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.borderStrong),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colors.borderSubtle),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.borderStrong),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colors.primary, width: 1.8),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.primary, width: 2.0),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(color: colors.danger, width: 1.4),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(color: colors.danger, width: 1.8),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        height: 70,
-        indicatorColor: colors.primary.withValues(alpha: isDark ? 0.18 : 0.14),
+        height: 74,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        indicatorColor: const Color(0xFF22C55E),
         indicatorShape: const StadiumBorder(),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? colors.primary : colors.textSecondary,
-            size: 22,
+            color: selected ? const Color(0xFF04140A) : colors.textSecondary,
+            size: 24,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: selected ? 12.5 : 12,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             color: selected ? colors.primary : colors.textSecondary,
           );
         }),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: colors.surface,
-        selectedColor: colors.primary.withValues(alpha: isDark ? 0.18 : 0.14),
-        side: BorderSide(color: colors.borderSubtle),
+        selectedColor: const Color(0xFF22C55E),
+        side: WidgetStateBorderSide.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return BorderSide(
+            color: selected ? const Color(0xFF22C55E) : colors.borderStrong,
+          );
+        }),
         shape: const StadiumBorder(),
-        labelStyle: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: colors.textPrimary,
-        ),
-        secondaryLabelStyle: TextStyle(
-          fontSize: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        labelStyle: WidgetStateTextStyle.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 12.5,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            color: selected ? const Color(0xFF04140A) : colors.textPrimary,
+          );
+        }),
+        secondaryLabelStyle: const TextStyle(
+          fontSize: 12.5,
           fontWeight: FontWeight.w700,
-          color: colors.primary,
+          color: Color(0xFF04140A),
         ),
-        checkmarkColor: colors.primary,
+        checkmarkColor: const Color(0xFF04140A),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return colors.primary.withValues(alpha: isDark ? 0.20 : 0.14);
+              return const Color(0xFF22C55E);
             }
-            return colors.surface;
+            return colors.surfaceElevated;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return colors.primary;
+              return const Color(0xFF04140A);
             }
             return colors.textSecondary;
           }),
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return BorderSide(color: colors.primary.withValues(alpha: 0.7));
+              return const BorderSide(color: Color(0xFF22C55E));
             }
-            return BorderSide(color: colors.borderSubtle);
+            return BorderSide(color: colors.borderStrong);
           }),
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           ),
+          shape: const WidgetStatePropertyAll(StadiumBorder()),
           textStyle: const WidgetStatePropertyAll(
-            TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: colors.primary,
-          foregroundColor: isDark ? const Color(0xFF04140A) : Colors.white,
+          backgroundColor: const Color(0xFF22C55E),
+          foregroundColor: const Color(0xFF04140A),
+          disabledBackgroundColor: colors.surfaceElevated,
+          disabledForegroundColor: colors.textMuted,
+          elevation: 0,
           shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.textPrimary,
-          side: BorderSide(color: colors.borderStrong),
+          side: BorderSide(color: colors.borderStrong, width: 1.2),
           shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
         ),
       ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: colors.primary,
-        foregroundColor: isDark ? const Color(0xFF04140A) : Colors.white,
-        shape: const StadiumBorder(),
-        elevation: 2,
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: Color(0xFF22C55E),
+        foregroundColor: Color(0xFF04140A),
+        shape: StadiumBorder(),
+        elevation: 4,
+        extendedTextStyle: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+          letterSpacing: 0.1,
+        ),
       ),
       tabBarTheme: TabBarThemeData(
         indicatorColor: colors.primary,
         labelColor: colors.primary,
         unselectedLabelColor: colors.textSecondary,
         dividerColor: colors.borderSubtle,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        labelStyle:
+            const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
         unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
       ),
       dividerTheme: DividerThemeData(
         color: colors.borderSubtle,

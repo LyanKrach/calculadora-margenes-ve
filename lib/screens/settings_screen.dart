@@ -64,32 +64,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         children: [
           Text(
             'Suscripción y Planes Pro',
             style: AppTypography.sectionTitle(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Container(
             decoration: _subState.isPro
                 ? BoxDecoration(
-                    color: colors.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: colors.primary.withValues(alpha: 0.55),
-                      width: 1.4,
+                    color: Color.alphaBlend(
+                      colors.primary.withValues(alpha: 0.08),
+                      colors.surface,
                     ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: colors.primary.withValues(alpha: 0.65),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.primary.withValues(alpha: 0.16),
+                        blurRadius: 18,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   )
                 : null,
             child: Card(
               color: _subState.isPro ? Colors.transparent : null,
               shape: _subState.isPro
                   ? const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(16)),
+                      borderRadius: BorderRadius.all(Radius.circular(20)),
                     )
                   : null,
               child: ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 leading: Container(
                   width: 40,
                   height: 40,
@@ -126,14 +138,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           Text(
             'Cuenta y Sincronización (Firebase)',
             style: AppTypography.sectionTitle(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Card(
             child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
               leading: Container(
                 width: 40,
                 height: 40,
@@ -174,18 +188,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           Text(
             'Apariencia (Fondo Claro y Oscuro)',
             style: AppTypography.sectionTitle(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: ThemeService.instance.themeModeNotifier,
             builder: (context, currentMode, _) {
               return Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -226,14 +240,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           Text(
             'Datos de Cobro',
             style: AppTypography.sectionTitle(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Card(
             child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
               leading: Container(
                 width: 40,
                 height: 40,
@@ -267,12 +283,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           Text('Acerca de', style: AppTypography.sectionTitle(context)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
