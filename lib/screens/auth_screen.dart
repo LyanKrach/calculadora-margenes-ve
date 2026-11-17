@@ -93,22 +93,36 @@ class _AuthScreenState extends State<AuthScreen> {
     });
     try {
       await _authService.signInWithGoogle();
-      await _productsService.getProducts(syncRemote: true);
-      await _historyService.getHistory(syncRemote: true);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sesión iniciada con Google y catálogo sincronizado'),
-        ),
-      );
-      setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
+      final msg = AuthService.friendlyErrorMessage(e);
       setState(() {
         _loading = false;
-        _errorMsg = AuthService.friendlyErrorMessage(e);
+        _errorMsg = msg;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      return;
     }
+
+    try {
+      await _productsService.getProducts(syncRemote: true);
+      await _historyService.getHistory(syncRemote: true);
+    } catch (_) {
+      // La sesión ya inició; la sincronización se reintentará al abrir Productos/Historial.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sesión iniciada con Google y catálogo sincronizado'),
+      ),
+    );
+    setState(() => _loading = false);
   }
 
   Future<void> _signInAnonymous() async {
@@ -587,9 +601,23 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
         if (_errorMsg != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _errorMsg!,
-            style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.redAccent.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              _errorMsg!,
+              style: const TextStyle(
+                color: Colors.redAccent,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
         const SizedBox(height: 16),

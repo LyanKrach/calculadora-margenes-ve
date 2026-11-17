@@ -61,9 +61,15 @@ class AuthService {
       final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+      final String? idToken = googleAuth.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw StateError(
+          'Google no devolvió un token de identidad (idToken vacío).',
+        );
+      }
 
       final AuthCredential credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
+        idToken: idToken,
       );
 
       return await auth.signInWithCredential(credential);
@@ -181,10 +187,20 @@ class AuthService {
   /// Traduce códigos de error de `FirebaseAuthException` y `GoogleSignInException` a español.
   static String friendlyErrorMessage(Object error) {
     if (error is GoogleSignInException) {
+      final desc = (error.description ?? '').trim();
+      final details = error.details?.toString().trim() ?? '';
+      final extra = [
+        if (desc.isNotEmpty) desc,
+        if (details.isNotEmpty && details != desc) details,
+      ].join(' · ');
       if (error.code == GoogleSignInExceptionCode.canceled) {
-        return 'Inicio de sesión con Google cancelado.';
+        return extra.isNotEmpty
+            ? 'Inicio de sesión con Google cancelado ($extra).'
+            : 'Inicio de sesión con Google cancelado.';
       }
-      return 'No se pudo iniciar sesión con Google (${error.code.name}).';
+      return extra.isNotEmpty
+          ? 'Error Google (${error.code.name}): $extra'
+          : 'No se pudo iniciar sesión con Google (${error.code.name}).';
     }
     if (error is FirebaseAuthException) {
       switch (error.code) {
