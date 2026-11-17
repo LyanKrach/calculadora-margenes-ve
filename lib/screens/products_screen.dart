@@ -18,6 +18,7 @@ import '../services/products_service.dart';
 import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
 import '../services/subscription_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/category_picker_field.dart';
 import 'auth_screen.dart';
@@ -215,14 +216,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
           : (user.email ?? 'Usuario');
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Theme.of(context)
-            .colorScheme
-            .primaryContainer
-            .withValues(alpha: 0.35),
+        decoration: BoxDecoration(
+          color: context.appColors.primary.withValues(alpha: 0.10),
+          border: Border(
+            bottom: BorderSide(color: context.appColors.borderSubtle),
+          ),
+        ),
         child: Row(
           children: [
-            Icon(Icons.cloud_done,
-                size: 16, color: Theme.of(context).colorScheme.primary),
+            Icon(Icons.cloud_done, size: 16, color: context.appColors.primary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -230,7 +232,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  color: context.appColors.textPrimary,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -688,7 +690,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                             item.category,
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Theme.of(context).colorScheme.primary,
+                                              fontWeight: FontWeight.w600,
+                                              color: context.appColors.primary,
                                             ),
                                           ),
                                       ],
@@ -703,15 +706,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                             : 'Sin tasa',
                                         style: TextStyle(
                                           fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).colorScheme.primary,
+                                          fontWeight: FontWeight.w800,
+                                          fontFeatures: const [
+                                            FontFeature.tabularFigures(),
+                                          ],
+                                          color: context.appColors.primary,
                                         ),
                                       ),
                                       Text(
                                         '${source.label} (${rate > 0 ? fmtRate(rate) : "—"})',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.grey,
+                                          color: context.appColors.textSecondary,
                                         ),
                                       ),
                                     ],
@@ -723,19 +729,33 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 'Costo: \$${fmtUsd(item.costUsd)} · Margen: ${item.marginPercent.toStringAsFixed(1)}% (${item.marginMode.shortLabel}) · '
                                 'Comisiones: ${totalCommPct.toStringAsFixed(1)}%'
                                 '${bd != null && rate > 0 ? ' · Ganancia: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / rate)})' : ''}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: context.appColors.textSecondary,
+                                ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 12),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   if (priceBs != null) ...[
-                                    FilledButton.tonalIcon(
+                                    FilledButton.icon(
                                       onPressed: () => _copyProductPrice(
                                         item,
                                         rate,
                                         priceBs,
+                                      ),
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 8,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                       icon: const Icon(Icons.copy, size: 16),
                                       label: const Text('Copiar Bs'),
@@ -746,17 +766,31 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         rate,
                                         priceBs,
                                       ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 8,
+                                        ),
+                                      ),
                                       icon: const Icon(Icons.send_outlined, size: 16),
                                       label: const Text('WhatsApp'),
                                     ),
                                   ],
                                   IconButton(
-                                    icon: const Icon(Icons.edit_outlined, size: 20),
+                                    icon: Icon(
+                                      Icons.edit_outlined,
+                                      size: 20,
+                                      color: context.appColors.textSecondary,
+                                    ),
                                     tooltip: 'Editar producto',
                                     onPressed: () => _openProductForm(existing: item),
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline, size: 20),
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: context.appColors.textSecondary,
+                                    ),
                                     tooltip: 'Eliminar producto',
                                     onPressed: () => _deleteProduct(item),
                                   ),
@@ -851,9 +885,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     children: [
                       Text(
                         '${fmtBs(entry.finalPriceBs)} Bs',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
                           fontSize: 15,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: context.appColors.primary,
                         ),
                       ),
                       IconButton(

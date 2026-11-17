@@ -6,6 +6,7 @@ import '../models/rate_snapshot.dart';
 import '../utils/format.dart';
 import '../services/calculator.dart';
 import '../services/rates_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/rates_bar_chart.dart';
 
 /// Pantalla de tasas: valores actuales, fuente, fecha de actualización
@@ -71,35 +72,49 @@ class _RatesScreenState extends State<RatesScreen> {
                     RateSource.binanceUsdt,
                     RateSource.euroBcv,
                   ])
-                    Card(
-                      child: ListTile(
-                        title: Text(source.label),
-                        subtitle: Text(
-                          '${_sourceDetail(source)}\n'
-                          '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
-                          'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
-                        ),
-                        trailing: Text(
-                          _rates[source] == null
-                              ? '—'
-                              : '${fmtRate(_rates[source]!.value)} ${source.unit}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Card(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
                           ),
+                          title: Text(
+                            source.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${_sourceDetail(source)}\n'
+                            '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
+                            'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.appColors.textSecondary,
+                            ),
+                          ),
+                          trailing: Text(
+                            _rates[source] == null
+                                ? '—'
+                                : '${fmtRate(_rates[source]!.value)} ${source.unit}',
+                            style: AppTypography.rateValue(context),
+                          ),
+                          isThreeLine: true,
                         ),
-                        isThreeLine: true,
                       ),
                     ),
                   if ((_rates[RateSource.bcvUsd]?.value ?? 0) > 0 &&
                       (_rates[RateSource.binanceUsdt]?.value ?? 0) > 0) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     _buildGapCard(
                       context: context,
                       bcvRate: _rates[RateSource.bcvUsd]!.value,
                       binanceRate: _rates[RateSource.binanceUsdt]!.value,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     RatesBarChart(
                       bcvRate: _rates[RateSource.bcvUsd]!.value,
                       binanceRate: _rates[RateSource.binanceUsdt]!.value,
@@ -107,14 +122,24 @@ class _RatesScreenState extends State<RatesScreen> {
                       snapshots: _snapshots,
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  const Card(
+                  const SizedBox(height: 12),
+                  Card(
                     child: ListTile(
-                      leading: Icon(Icons.info_outline),
-                      title: Text('Modo sin conexión'),
+                      leading: Icon(
+                        Icons.info_outline,
+                        color: context.appColors.textSecondary,
+                      ),
+                      title: const Text(
+                        'Modo sin conexión',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       subtitle: Text(
                         'Si no hay internet, la app muestra la última tasa guardada '
                         'con su fecha y hora.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.appColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
@@ -136,17 +161,25 @@ class _RatesScreenState extends State<RatesScreen> {
     final diffBs = binanceRate - bcvRate;
     final isPositive = diffBs >= 0;
     final sign = isPositive ? '+' : '';
-    final theme = Theme.of(context);
-    final accentColor = isPositive ? Colors.amber : Colors.green;
+    final colors = context.appColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accentColor = isPositive ? colors.amber : colors.primary;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: accentColor.withAlpha(180),
-          width: 1.2,
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.55),
+          width: 1.3,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: isDark ? 0.12 : 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -160,22 +193,23 @@ class _RatesScreenState extends State<RatesScreen> {
                   color: accentColor,
                 ),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Brecha Cambiaria (Binance vs BCV)',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: AppTypography.sectionTitle(context),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: accentColor.withAlpha(40),
-                    borderRadius: BorderRadius.circular(8),
+                    color: accentColor.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     '$sign${gapPercent.toStringAsFixed(2)} %',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
                       color: accentColor,
                     ),
                   ),
@@ -185,7 +219,7 @@ class _RatesScreenState extends State<RatesScreen> {
             const SizedBox(height: 12),
             Text(
               'Diferencia: $sign${fmtBs(diffBs)} Bs/USD',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: AppTypography.rateValue(context),
             ),
             const SizedBox(height: 8),
             Text(
@@ -197,7 +231,8 @@ class _RatesScreenState extends State<RatesScreen> {
                   : 'La tasa Binance se encuentra por debajo de la tasa oficial BCV.',
               style: TextStyle(
                 fontSize: 13,
-                color: theme.textTheme.bodyMedium?.color?.withAlpha(200),
+                color: colors.textSecondary,
+                height: 1.35,
               ),
             ),
           ],

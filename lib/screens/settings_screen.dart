@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/seller_profile_service.dart';
 import '../services/subscription_service.dart';
 import '../services/theme_service.dart';
+import '../theme/app_theme.dart';
 import 'auth_screen.dart';
 import 'pro_plans_screen.dart';
 import 'seller_profile_screen.dart';
@@ -58,55 +59,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
+          Text(
             'Suscripción y Planes Pro',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: AppTypography.sectionTitle(context),
           ),
           const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                _subState.isPro ? Icons.workspace_premium : Icons.diamond_outlined,
-                color: _subState.isPro
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
+          Container(
+            decoration: _subState.isPro
+                ? BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: colors.primary.withValues(alpha: 0.55),
+                      width: 1.4,
+                    ),
+                  )
+                : null,
+            child: Card(
+              color: _subState.isPro ? Colors.transparent : null,
+              shape: _subState.isPro
+                  ? const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(16)),
+                    )
+                  : null,
+              child: ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _subState.isPro
+                        ? Icons.workspace_premium
+                        : Icons.diamond_outlined,
+                    color: colors.primary,
+                  ),
+                ),
+                title: Text(
+                  _subState.isPro
+                      ? 'Plan Pro Activo (${ProPlanId.tryParse(_subState.plan)?.shortName ?? 'Pro'})'
+                      : 'Plan Gratis · Pasar a Pro',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  _subState.isPro
+                      ? 'Vence en ${_subState.daysLeft} días · Productos y reportes ilimitados'
+                      : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$14,99/año (-37%)',
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
+                ),
+                trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProPlansScreen()),
+                  );
+                  await _loadData();
+                },
               ),
-              title: Text(
-                _subState.isPro
-                    ? 'Plan Pro Activo (${ProPlanId.tryParse(_subState.plan)?.shortName ?? 'Pro'})'
-                    : 'Plan Gratis · Pasar a Pro',
-              ),
-              subtitle: Text(
-                _subState.isPro
-                    ? 'Vence en ${_subState.daysLeft} días · Productos y reportes ilimitados'
-                    : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$14,99/año (-37%)',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProPlansScreen()),
-                );
-                await _loadData();
-              },
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
+          const SizedBox(height: 22),
+          Text(
             'Cuenta y Sincronización (Firebase)',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: AppTypography.sectionTitle(context),
           ),
           const SizedBox(height: 8),
           Card(
             child: ListTile(
-              leading: Icon(
-                _authService.isSignedIn
-                    ? Icons.cloud_done
-                    : Icons.person_outline,
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _authService.isSignedIn
+                      ? Icons.cloud_done
+                      : Icons.person_outline,
+                  color: colors.primary,
+                ),
               ),
               title: Text(
                 _authService.isSignedIn
@@ -115,13 +155,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : (_authService.currentUser?.email ??
                             'Cuenta Sincronizada'))
                     : 'Iniciar sesión o crear cuenta',
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: Text(
                 _authService.isSignedIn
                     ? 'Tus productos e historial están sincronizados en Cloud Firestore.'
                     : 'Respalda tus productos e historial en la nube o úsala en modo local.',
+                style: TextStyle(fontSize: 12, color: colors.textSecondary),
               ),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
               onTap: () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute(
@@ -132,10 +174,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
+          const SizedBox(height: 22),
+          Text(
             'Apariencia (Fondo Claro y Oscuro)',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: AppTypography.sectionTitle(context),
           ),
           const SizedBox(height: 8),
           ValueListenableBuilder<ThemeMode>(
@@ -143,37 +185,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             builder: (context, currentMode, _) {
               return Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Selecciona el tema visual de la aplicación:',
-                        style: TextStyle(fontSize: 13),
+                        style: TextStyle(fontSize: 13, color: colors.textSecondary),
                       ),
-                      const SizedBox(height: 10),
-                      SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: ThemeMode.dark,
-                            icon: Icon(Icons.dark_mode_outlined),
-                            label: Text('Oscuro'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.light,
-                            icon: Icon(Icons.light_mode_outlined),
-                            label: Text('Claro'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.system,
-                            icon: Icon(Icons.brightness_auto_outlined),
-                            label: Text('Sistema'),
-                          ),
-                        ],
-                        selected: {currentMode},
-                        onSelectionChanged: (modes) {
-                          ThemeService.instance.setThemeMode(modes.first);
-                        },
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<ThemeMode>(
+                          segments: const [
+                            ButtonSegment(
+                              value: ThemeMode.dark,
+                              icon: Icon(Icons.dark_mode_outlined),
+                              label: Text('Oscuro'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.light,
+                              icon: Icon(Icons.light_mode_outlined),
+                              label: Text('Claro'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.system,
+                              icon: Icon(Icons.brightness_auto_outlined),
+                              label: Text('Sistema'),
+                            ),
+                          ],
+                          selected: {currentMode},
+                          onSelectionChanged: (modes) {
+                            ThemeService.instance.setThemeMode(modes.first);
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -181,22 +226,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const SizedBox(height: 24),
-          const Text(
+          const SizedBox(height: 22),
+          Text(
             'Datos de Cobro',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: AppTypography.sectionTitle(context),
           ),
           const SizedBox(height: 8),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: const Text('Perfil de Vendedor (Pago Móvil)'),
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: colors.primary,
+                ),
+              ),
+              title: const Text(
+                'Perfil de Vendedor (Pago Móvil)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
               subtitle: Text(
                 _profile.hasPagoMovil
                     ? '${_profile.bank} · ${_profile.phone} · ${_profile.idDocument}'
                     : 'Configura tu banco, teléfono y cédula/RIF para adjuntarlos al mensaje del cliente.',
+                style: TextStyle(fontSize: 12, color: colors.textSecondary),
               ),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
               onTap: () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute(
@@ -207,8 +267,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 24),
-          const Text('Acerca de', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 22),
+          Text('Acerca de', style: AppTypography.sectionTitle(context)),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -225,20 +285,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Calculadora de Márgenes VE',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
                           'Versión 1.0.0+1\n'
                           'Para comerciantes en Venezuela: precios en bolívares calculados al instante con tasas BCV, Binance P2P y Euro oficial.\n\n'
                           'Soporta cálculo Sobre Costo (Markup directo) y Sobre Venta (Margen financiero limpio).',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.textSecondary,
+                            height: 1.35,
+                          ),
                         ),
                       ],
                     ),

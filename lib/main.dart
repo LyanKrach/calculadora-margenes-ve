@@ -10,6 +10,7 @@ import 'screens/rates_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/subscription_service.dart';
 import 'services/theme_service.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,31 +79,38 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.calculate_outlined),
-            selectedIcon: Icon(Icons.calculate),
-            label: 'Calculadora',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: context.appColors.borderSubtle),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Productos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.currency_exchange_outlined),
-            selectedIcon: Icon(Icons.currency_exchange),
-            label: 'Tasas',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Ajustes',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.calculate_outlined),
+              selectedIcon: Icon(Icons.calculate),
+              label: 'Calculadora',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.inventory_2_outlined),
+              selectedIcon: Icon(Icons.inventory_2),
+              label: 'Productos',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.currency_exchange_outlined),
+              selectedIcon: Icon(Icons.currency_exchange),
+              label: 'Tasas',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: 'Ajustes',
+            ),
+          ],
+        ),
       ),
     );
   }

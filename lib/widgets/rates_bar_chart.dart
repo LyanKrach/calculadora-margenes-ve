@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/rate_snapshot.dart';
 import '../services/calculator.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
 
 /// Gráfico comparativo de tasas (BCV, Binance USDT y Euro BCV) y evolución
@@ -37,6 +38,7 @@ class RatesBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = snapshots.length;
+    final colors = context.appColors;
 
     return Semantics(
       container: true,
@@ -48,14 +50,14 @@ class RatesBarChart extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Comparativa Visual de Tasas (Bs)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: AppTypography.sectionTitle(context),
               ),
               const SizedBox(height: 4),
               Text(
                 'Ventana registrada: últimas $count actualizaciones',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: colors.textSecondary),
               ),
               const SizedBox(height: 16),
               ExcludeSemantics(
@@ -73,6 +75,8 @@ class RatesBarChart extends StatelessWidget {
                           binanceRate: binanceRate,
                           euroRate: euroRate,
                           progress: progress,
+                          labelColor: colors.textSecondary,
+                          gridColor: colors.borderStrong,
                         ),
                       ),
                     );
@@ -146,12 +150,16 @@ class _RatesBarPainter extends CustomPainter {
     required this.binanceRate,
     required this.euroRate,
     required this.progress,
+    required this.labelColor,
+    required this.gridColor,
   });
 
   final double bcvRate;
   final double binanceRate;
   final double euroRate;
   final double progress;
+  final Color labelColor;
+  final Color gridColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -176,7 +184,7 @@ class _RatesBarPainter extends CustomPainter {
 
     // Línea base
     final baseLinePaint = Paint()
-      ..color = const Color(0xFF2A3441)
+      ..color = gridColor
       ..strokeWidth = 1.0;
     final baselineY = topPadding + chartHeight;
     canvas.drawLine(
@@ -226,8 +234,8 @@ class _RatesBarPainter extends CustomPainter {
       final labelPainter = TextPainter(
         text: TextSpan(
           text: entry.label,
-          style: const TextStyle(
-            color: Color(0xFFCBD5E1),
+          style: TextStyle(
+            color: labelColor,
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
@@ -247,7 +255,9 @@ class _RatesBarPainter extends CustomPainter {
     return oldDelegate.bcvRate != bcvRate ||
         oldDelegate.binanceRate != binanceRate ||
         oldDelegate.euroRate != euroRate ||
-        oldDelegate.progress != progress;
+        oldDelegate.progress != progress ||
+        oldDelegate.labelColor != labelColor ||
+        oldDelegate.gridColor != gridColor;
   }
 }
 

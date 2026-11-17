@@ -13,6 +13,7 @@ import '../services/price_list_formatter.dart';
 import '../services/products_service.dart';
 import '../services/rates_service.dart';
 import '../services/seller_profile_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/category_picker_field.dart';
 import '../widgets/history_presets_sheet.dart';
@@ -575,8 +576,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // --- 4 tarjetas de tasa ---
-          const Text('Tasa del día', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          Text('Tasa del día', style: AppTypography.sectionTitle(context)),
+          const SizedBox(height: 10),
           if (_loadingRates)
             const LinearProgressIndicator()
           else
@@ -584,7 +585,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           if (_ratesError != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(_ratesError!, style: const TextStyle(color: Colors.orange)),
+              child: Text(
+                _ratesError!,
+                style: TextStyle(color: context.appColors.amber, fontSize: 13),
+              ),
             ),
           if (_selectedSource == RateSource.custom)
             Padding(
@@ -595,6 +599,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Tasa personalizada (Bs/\$)',
                   hintText: 'Ej. 950,00',
+                  suffixText: 'Bs/\$',
                 ),
                 onChanged: (_) async {
                   final v = double.tryParse(_customRateCtrl.text.replaceAll(',', '.'));
@@ -607,7 +612,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           // --- Modo de Cálculo: Sobre costo vs Sobre venta ---
           Row(
             children: [
-              const Text('Modo de margen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Modo de margen', style: AppTypography.sectionTitle(context)),
               const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.help_outline, size: 20),
@@ -633,18 +638,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             selected: {_marginMode},
             onSelectionChanged: (s) => setState(() => _marginMode = s.first),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             _marginMode == MarginMode.onCost
                 ? 'Markup directo: Precio = Costo × (1 + Margen) ÷ (1 − Comisiones)'
                 : 'Margen comercial: Precio = Costo ÷ (1 − Comisiones − Margen)',
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(fontSize: 11, color: context.appColors.textMuted),
           ),
           const SizedBox(height: 14),
 
           // --- Inputs ---
-          _numField(_costCtrl, 'Costo del producto (\$)'),
-          const SizedBox(height: 8),
+          _numField(_costCtrl, 'Costo del producto (\$)', prefixText: '\$ '),
+          const SizedBox(height: 10),
           Row(children: [
             Expanded(
               child: _numField(
@@ -652,14 +657,15 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 _marginMode == MarginMode.onCost
                     ? 'Margen s/costo (%)'
                     : 'Margen s/venta (%)',
+                suffixText: '%',
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(child: _numField(_fixedCtrl, 'Gasto fijo (Bs)')),
+            const SizedBox(width: 10),
+            Expanded(child: _numField(_fixedCtrl, 'Gasto fijo (Bs)', suffixText: 'Bs')),
           ]),
+          const SizedBox(height: 14),
+          Text('Comisiones (%)', style: AppTypography.sectionTitle(context)),
           const SizedBox(height: 8),
-          const Text('Comisiones (%)', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -690,13 +696,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: _numField(_provCtrl, 'Plataforma / Prov.')),
+            Expanded(child: _numField(_provCtrl, 'Plataforma / Prov.', suffixText: '%')),
             const SizedBox(width: 8),
-            Expanded(child: _numField(_gatewayCtrl, 'Pago Móvil / Pasarela')),
+            Expanded(child: _numField(_gatewayCtrl, 'Pago Móvil / Pasarela', suffixText: '%')),
             const SizedBox(width: 8),
-            Expanded(child: _numField(_otherCtrl, 'Otra')),
+            Expanded(child: _numField(_otherCtrl, 'Otra', suffixText: '%')),
           ]),
           const SizedBox(height: 8),
           SegmentedButton<int>(
@@ -723,118 +729,29 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               ),
             )
           else if (bd != null && rounded != null && exact != null) ...[
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Precio de venta', style: TextStyle(fontSize: 14)),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withAlpha(40),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            _marginMode.shortLabel,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '${fmtBs(rounded)} Bs',
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      _roundStep == 0
-                          ? 'Precio exacto · sin redondeo (≈ \$${fmtUsd(rounded / _rate)} USD)'
-                          : 'Precio exacto: ${fmtBs(exact)} Bs · redondeado a Bs $_roundStep (≈ \$${fmtUsd(rounded / _rate)} USD)',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    Text(
-                      _marginMode == MarginMode.onCost
-                          ? 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                              'margen s/costo: ${(bd.realMarginOnCost * 100).toStringAsFixed(1)} % (s/venta: ${(bd.realMargin * 100).toStringAsFixed(1)} %)'
-                          : 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                              'margen real: ${(bd.realMargin * 100).toStringAsFixed(1)} %',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: () => _copyPrice(rounded!),
-                          icon: const Icon(Icons.copy, size: 18),
-                          label: const Text('Copiar precio'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _copyClientMessage(rounded!),
-                          icon: const Icon(Icons.message_outlined, size: 18),
-                          label: const Text('Mensaje cliente'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _shareWhatsApp(rounded!),
-                          icon: const Icon(Icons.send_outlined, size: 18),
-                          label: const Text('WhatsApp'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _promptSavePreset(rounded!),
-                          icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                          label: const Text('Guardar como preset'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            _buildHeroPriceCard(
+              context: context,
+              rounded: rounded,
+              exact: exact,
+              bd: bd,
             ),
-            const SizedBox(height: 12),
-            const Text('Desglose paso a paso', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _step('1. Costo en Bs', 'Costo × tasa = \$${fmtUsd(_costUsd)} × ${fmtRate(_rate)} = ${fmtBs(bd.costBs)} Bs'),
-            _step('2. Gasto fijo', '${fmtBs(bd.fixedExpenseBs)} Bs'),
-            _step(
-              '3. Precio exacto (${_marginMode.shortLabel})',
-              _marginMode == MarginMode.onCost
-                  ? '(${fmtBs(bd.costBs)} × (1 + ${(_margin * 100).toStringAsFixed(1)} %) + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs'
-                  : '(${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} % − ${(_margin * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs',
+            const SizedBox(height: 20),
+            Text('Desglose paso a paso', style: AppTypography.sectionTitle(context)),
+            const SizedBox(height: 10),
+            _buildTimelineBreakdown(
+              context: context,
+              bd: bd,
+              exact: exact,
+              rounded: rounded,
             ),
-            _step(
-              '4. Redondeo',
-              _roundStep == 0
-                  ? '${fmtBs(exact)} Bs (Exacto sin redondeo)'
-                  : '${fmtBs(exact)} → ${fmtBs(rounded)} Bs (a Bs $_roundStep)',
-            ),
-            _step('5. Comisiones (${(_totalCommission * 100).toStringAsFixed(1)} %)',
-                '${fmtBs(bd.commissionBs)} Bs (plataforma ${fmtBs(bd.commissionProviderBs)} · pago móvil/pasarela ${fmtBs(bd.commissionGatewayBs)} · otra ${fmtBs(bd.commissionOtherBs)})'),
-            _step(
-              '6. Ganancia',
-              _marginMode == MarginMode.onCost
-                  ? '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % del costo) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos'
-                  : '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % de venta) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos',
-            ),
-            _step('Comprobación',
-                '${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)} + ${fmtBs(bd.commissionBs)} + ${fmtBs(bd.netProfitBs)} = ${fmtBs(rounded)} Bs ✓'),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // --- Tabla comparativa 10 %-40 % ---
             Text(
               'Tabla comparativa por margen (${_marginMode.shortLabel})',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: AppTypography.sectionTitle(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Card(
               child: Column(
                 children: MarginCalculator.comparisonTable(
@@ -844,54 +761,382 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   fixedExpenseBs: _fixed,
                   roundStep: _roundStep,
                   marginMode: _marginMode,
-                ).map((row) => ListTile(
+                ).map((row) {
+                  final isCurrent = row.margin == _margin;
+                  return Container(
+                    decoration: isCurrent
+                        ? BoxDecoration(
+                            color: context.appColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                          )
+                        : null,
+                    child: ListTile(
                       dense: true,
-                      title: Text('${(row.margin * 100).toStringAsFixed(0)} %'),
+                      title: Text(
+                        '${(row.margin * 100).toStringAsFixed(0)} %',
+                        style: TextStyle(
+                          fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
                       trailing: Text(
                         '${fmtBs(row.roundedPriceBs)} Bs',
                         style: TextStyle(
-                          fontWeight: row.margin == _margin ? FontWeight.bold : FontWeight.normal,
-                          color: row.margin == _margin
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
+                          fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: isCurrent
+                              ? context.appColors.primary
+                              : context.appColors.textPrimary,
                         ),
                       ),
-                      subtitle: Text('Ganancia neta ${fmtBs(row.netProfitBs)} Bs'),
-                    )).toList(),
+                      subtitle: Text(
+                        'Ganancia neta ${fmtBs(row.netProfitBs)} Bs',
+                        style: TextStyle(color: context.appColors.textSecondary),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // --- Calculadora inversa ---
-            const Text('Calculadora inversa', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            Text('Calculadora inversa', style: AppTypography.sectionTitle(context)),
+            const SizedBox(height: 10),
             TextField(
               controller: _inversePriceCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Precio actual que cobras (Bs)',
                 hintText: 'Ej. 12000',
+                suffixText: 'Bs',
               ),
             ),
             if (inverseMargin != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 10),
                 child: Text(
                   inverseMargin < 0
                       ? 'Margen real: ${(inverseMargin * 100).toStringAsFixed(1)} % — ¡PIERDES DINERO con ese precio!'
                       : 'Margen real con ese precio: ${(inverseMargin * 100).toStringAsFixed(1)} %',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: inverseMargin < 0 ? Colors.red : Colors.green,
+                    fontWeight: FontWeight.w700,
+                    color: inverseMargin < 0
+                        ? context.appColors.danger
+                        : context.appColors.primary,
                   ),
                 ),
               ),
           ],
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Fórmula: Precio = (Costo en Bs + Gasto fijo) ÷ (1 − comisiones − margen). '
             'El margen es sobre el precio de venta, no sobre el costo.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
+            style: TextStyle(fontSize: 12, color: context.appColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroPriceCard({
+    required BuildContext context,
+    required double rounded,
+    required double exact,
+    required Breakdown bd,
+  }) {
+    final colors = context.appColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [colors.heroGradientStart, colors.heroGradientEnd],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.heroBorder, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primary.withValues(alpha: isDark ? 0.16 : 0.10),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'PRECIO DE VENTA',
+                style: AppTypography.overlineLabel(context).copyWith(
+                  color: isDark
+                      ? colors.primary.withValues(alpha: 0.9)
+                      : colors.primaryDark,
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border:
+                      Border.all(color: colors.primary.withValues(alpha: 0.35)),
+                ),
+                child: Text(
+                  _marginMode.shortLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? colors.primary : colors.primaryDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.96, end: 1.0).animate(anim),
+                child: child,
+              ),
+            ),
+            child: FittedBox(
+              key: ValueKey(rounded),
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${fmtBs(rounded)} Bs',
+                style: AppTypography.heroPrice(context),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _roundStep == 0
+                ? 'Precio exacto · sin redondeo (≈ \$${fmtUsd(rounded / _rate)} USD)'
+                : 'Precio exacto: ${fmtBs(exact)} Bs · redondeado a Bs $_roundStep (≈ \$${fmtUsd(rounded / _rate)} USD)',
+            style: TextStyle(fontSize: 12, color: colors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: colors.primary.withValues(alpha: isDark ? 0.14 : 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
+            ),
+            child: Text(
+              _marginMode == MarginMode.onCost
+                  ? 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
+                      'margen s/costo: ${(bd.realMarginOnCost * 100).toStringAsFixed(1)} % (s/venta: ${(bd.realMargin * 100).toStringAsFixed(1)} %)'
+                  : 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
+                      'margen real: ${(bd.realMargin * 100).toStringAsFixed(1)} %',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? const Color(0xFF86EFAC) : colors.primaryDark,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: () => _copyPrice(rounded),
+                icon: const Icon(Icons.copy, size: 17),
+                label: const Text('Copiar precio'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _copyClientMessage(rounded),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: colors.surface.withValues(alpha: 0.75),
+                ),
+                icon: const Icon(Icons.message_outlined, size: 17),
+                label: const Text('Mensaje cliente'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _shareWhatsApp(rounded),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: colors.surface.withValues(alpha: 0.75),
+                ),
+                icon: const Icon(Icons.send_outlined, size: 17),
+                label: const Text('WhatsApp'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _promptSavePreset(rounded),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: colors.surface.withValues(alpha: 0.75),
+                ),
+                icon: const Icon(Icons.bookmark_add_outlined, size: 17),
+                label: const Text('Guardar como preset'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineBreakdown({
+    required BuildContext context,
+    required Breakdown bd,
+    required double exact,
+    required double rounded,
+  }) {
+    final steps = <(String, String, String)>[
+      (
+        '1',
+        '1. Costo en Bs',
+        'Costo × tasa = \$${fmtUsd(_costUsd)} × ${fmtRate(_rate)} = ${fmtBs(bd.costBs)} Bs',
+      ),
+      ('2', '2. Gasto fijo', '${fmtBs(bd.fixedExpenseBs)} Bs'),
+      (
+        '3',
+        '3. Precio exacto (${_marginMode.shortLabel})',
+        _marginMode == MarginMode.onCost
+            ? '(${fmtBs(bd.costBs)} × (1 + ${(_margin * 100).toStringAsFixed(1)} %) + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs'
+            : '(${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} % − ${(_margin * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs',
+      ),
+      (
+        '4',
+        '4. Redondeo',
+        _roundStep == 0
+            ? '${fmtBs(exact)} Bs (Exacto sin redondeo)'
+            : '${fmtBs(exact)} → ${fmtBs(rounded)} Bs (a Bs $_roundStep)',
+      ),
+      (
+        '5',
+        '5. Comisiones (${(_totalCommission * 100).toStringAsFixed(1)} %)',
+        '${fmtBs(bd.commissionBs)} Bs (plataforma ${fmtBs(bd.commissionProviderBs)} · pago móvil/pasarela ${fmtBs(bd.commissionGatewayBs)} · otra ${fmtBs(bd.commissionOtherBs)})',
+      ),
+      (
+        '6',
+        '6. Ganancia',
+        _marginMode == MarginMode.onCost
+            ? '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % del costo) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos'
+            : '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % de venta) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos',
+      ),
+      (
+        '✓',
+        'Comprobación',
+        '${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)} + ${fmtBs(bd.commissionBs)} + ${fmtBs(bd.netProfitBs)} = ${fmtBs(rounded)} Bs ✓',
+      ),
+    ];
+
+    final colors = context.appColors;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            for (var i = 0; i < steps.length; i++)
+              _timelineStep(
+                context: context,
+                badge: steps[i].$1,
+                title: steps[i].$2,
+                detail: steps[i].$3,
+                isLast: i == steps.length - 1,
+                isCheck: steps[i].$1 == '✓',
+                colors: colors,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _timelineStep({
+    required BuildContext context,
+    required String badge,
+    required String title,
+    required String detail,
+    required bool isLast,
+    required bool isCheck,
+    required AppColors colors,
+  }) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 28,
+            child: Column(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCheck
+                        ? colors.primary
+                        : colors.primary.withValues(alpha: 0.14),
+                    border: Border.all(
+                      color: colors.primary.withValues(alpha: isCheck ? 1 : 0.6),
+                      width: 1.4,
+                    ),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isCheck ? Colors.white : colors.primary,
+                    ),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: colors.borderStrong,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -901,6 +1146,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Widget _rateCard(RateSource source) {
     final rate = _ratesMap[source];
     final selected = _selectedSource == source;
+    final colors = context.appColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final String subtitle;
     if (source == RateSource.custom) {
       subtitle = 'La escribes tú, sin internet';
@@ -915,22 +1163,106 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           : '';
       subtitle = '${fmtRate(rate.value)} ${source.unit}$cachedSuffix$effDateStr';
     }
-    return Card(
-      color: selected ? Theme.of(context).colorScheme.primaryContainer : null,
-      child: ListTile(
-        title: Text(source.label),
-        subtitle: Text(subtitle),
-        trailing: selected ? const Icon(Icons.check_circle) : null,
+
+    final bool hasTodayBadge = selected &&
+        rate != null &&
+        (source == RateSource.bcvUsd || source == RateSource.euroBcv);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: selected ? colors.primary : colors.borderSubtle,
+          width: selected ? 2 : 1,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: colors.primary.withValues(alpha: isDark ? 0.22 : 0.14),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(15),
+        child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         onTap: () => setState(() => _selectedSource = source),
+        title: Row(
+          children: [
+            Text(
+              source.label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
+            ),
+            if (hasTodayBadge) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Hoy',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: colors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 13,
+              color: colors.textSecondary,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        trailing: selected
+            ? Icon(
+                Icons.check_circle,
+                color: colors.primary,
+                size: 26,
+              )
+            : null,
+        ),
       ),
     );
   }
 
-  Widget _numField(TextEditingController ctrl, String label) {
+  Widget _numField(
+    TextEditingController ctrl,
+    String label, {
+    String? prefixText,
+    String? suffixText,
+  }) {
     return TextField(
       controller: ctrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: prefixText,
+        suffixText: suffixText,
+      ),
     );
   }
 
@@ -956,12 +1288,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           }
         });
       },
-    );
-  }
-
-  Widget _step(String title, String detail) {
-    return Card(
-      child: ListTile(title: Text(title), subtitle: Text(detail)),
     );
   }
 }
