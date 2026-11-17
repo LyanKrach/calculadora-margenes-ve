@@ -77,51 +77,95 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.appColors.surface,
-          border: Border(
-            top: BorderSide(color: context.appColors.borderStrong, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(
-                alpha: Theme.of(context).brightness == Brightness.dark
-                    ? 0.35
-                    : 0.06,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: isDark
+                      ? [const Color(0xFF0C141B), colors.background]
+                      : [const Color(0xFFF8FAFC), colors.background],
+                  stops: const [0, 0.5],
+                ),
               ),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
             ),
-          ],
-        ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.calculate_outlined),
-              selectedIcon: Icon(Icons.calculate),
-              label: 'Calculadora',
+          ),
+          Positioned(
+            top: -150,
+            right: -100,
+            child: IgnorePointer(
+              child: Container(
+                width: 340,
+                height: 340,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      colors.primary.withValues(alpha: isDark ? 0.16 : 0.10),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.inventory_2_outlined),
-              selectedIcon: Icon(Icons.inventory_2),
-              label: 'Productos',
+          ),
+          IndexedStack(index: _index, children: _pages),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: colors.borderStrong),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(25),
+            child: NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.calculate_outlined),
+                  selectedIcon: Icon(Icons.calculate),
+                  label: 'Calculadora',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.inventory_2_outlined),
+                  selectedIcon: Icon(Icons.inventory_2),
+                  label: 'Productos',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.currency_exchange_outlined),
+                  selectedIcon: Icon(Icons.currency_exchange),
+                  label: 'Tasas',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: 'Ajustes',
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: Icon(Icons.currency_exchange_outlined),
-              selectedIcon: Icon(Icons.currency_exchange),
-              label: 'Tasas',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'Ajustes',
-            ),
-          ],
+          ),
         ),
       ),
     );

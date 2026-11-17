@@ -127,8 +127,11 @@ class AppColors extends ThemeExtension<AppColors> {
       borderStrong: Color.lerp(borderStrong, other.borderStrong, t)!,
       primary: Color.lerp(primary, other.primary, t)!,
       primaryDark: Color.lerp(primaryDark, other.primaryDark, t)!,
-      heroGradientStart:
-          Color.lerp(heroGradientStart, other.heroGradientStart, t)!,
+      heroGradientStart: Color.lerp(
+        heroGradientStart,
+        other.heroGradientStart,
+        t,
+      )!,
       heroGradientEnd: Color.lerp(heroGradientEnd, other.heroGradientEnd, t)!,
       heroBorder: Color.lerp(heroBorder, other.heroBorder, t)!,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
@@ -169,9 +172,9 @@ class AppTypography {
 
   static TextStyle sectionTitle(BuildContext context) {
     return TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      letterSpacing: -0.2,
+      fontSize: 17,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.4,
       color: context.appColors.textPrimary,
     );
   }
@@ -187,8 +190,8 @@ class AppTypography {
 
   static TextStyle rateValue(BuildContext context) {
     return TextStyle(
-      fontSize: 20,
-      fontWeight: FontWeight.w700,
+      fontSize: 21,
+      fontWeight: FontWeight.w800,
       color: context.appColors.textPrimary,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
@@ -201,15 +204,11 @@ class AppTheme {
 
   static const Color brandSeedColor = Color(0xFF22C55E);
 
-  static ThemeData get darkTheme => _buildTheme(
-        brightness: Brightness.dark,
-        colors: AppColors.dark,
-      );
+  static ThemeData get darkTheme =>
+      _buildTheme(brightness: Brightness.dark, colors: AppColors.dark);
 
-  static ThemeData get lightTheme => _buildTheme(
-        brightness: Brightness.light,
-        colors: AppColors.light,
-      );
+  static ThemeData get lightTheme =>
+      _buildTheme(brightness: Brightness.light, colors: AppColors.light);
 
   static ThemeData _buildTheme({
     required Brightness brightness,
@@ -244,15 +243,17 @@ class AppTheme {
       scaffoldBackgroundColor: colors.background,
       extensions: [colors],
       appBarTheme: AppBarTheme(
-        backgroundColor: colors.background,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: colors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        toolbarHeight: 72,
         titleTextStyle: TextStyle(
           fontSize: 20,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.3,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.5,
           color: colors.textPrimary,
         ),
         iconTheme: IconThemeData(color: colors.textSecondary),
@@ -269,8 +270,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colors.surfaceElevated,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 16,
+        ),
         labelStyle: TextStyle(
           color: colors.textSecondary,
           fontSize: 13,
@@ -312,7 +315,7 @@ class AppTheme {
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        height: 74,
+        height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         indicatorColor: const Color(0xFF22C55E),
         indicatorShape: const StadiumBorder(),
@@ -320,13 +323,13 @@ class AppTheme {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             color: selected ? const Color(0xFF04140A) : colors.textSecondary,
-            size: 24,
+            size: selected ? 24 : 23,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: selected ? 12.5 : 12,
+            fontSize: selected ? 12 : 11.5,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             color: selected ? colors.primary : colors.textSecondary,
           );
@@ -405,7 +408,10 @@ class AppTheme {
           side: BorderSide(color: colors.borderStrong, width: 1.2),
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -424,15 +430,16 @@ class AppTheme {
         labelColor: colors.primary,
         unselectedLabelColor: colors.textSecondary,
         dividerColor: colors.borderSubtle,
-        labelStyle:
-            const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-        unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 13.5,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13.5,
+        ),
       ),
-      dividerTheme: DividerThemeData(
-        color: colors.borderSubtle,
-        thickness: 1,
-      ),
+      dividerTheme: DividerThemeData(color: colors.borderSubtle, thickness: 1),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,

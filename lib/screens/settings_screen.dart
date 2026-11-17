@@ -62,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final colors = context.appColors;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -100,8 +101,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     )
                   : null,
               child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
                 leading: Container(
                   width: 40,
                   height: 40,
@@ -128,7 +131,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : 'Desde \$1,99/mes · \$4,99/3m · \$7,99/6m · \$14,99/año (-37%)',
                   style: TextStyle(fontSize: 12, color: colors.textSecondary),
                 ),
-                trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: colors.textSecondary,
+                ),
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ProPlansScreen()),
@@ -146,8 +152,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 10),
           Card(
             child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 8,
+              ),
               leading: Container(
                 width: 40,
                 height: 40,
@@ -165,9 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: Text(
                 _authService.isSignedIn
                     ? (_authService.currentUser?.isAnonymous == true
-                        ? 'Sesión de Invitado Activa'
-                        : (_authService.currentUser?.email ??
-                            'Cuenta Sincronizada'))
+                          ? 'Sesión de Invitado Activa'
+                          : (_authService.currentUser?.email ??
+                                'Cuenta Sincronizada'))
                     : 'Iniciar sesión o crear cuenta',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
@@ -179,11 +187,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
               onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const AuthScreen(),
-                  ),
-                );
+                await Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
                 await _loadData();
               },
             ),
@@ -205,7 +211,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Text(
                         'Selecciona el tema visual de la aplicación:',
-                        style: TextStyle(fontSize: 13, color: colors.textSecondary),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.textSecondary,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -241,15 +250,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const SizedBox(height: 20),
-          Text(
-            'Datos de Cobro',
-            style: AppTypography.sectionTitle(context),
-          ),
+          Text('Datos de Cobro', style: AppTypography.sectionTitle(context)),
           const SizedBox(height: 10),
           Card(
             child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 8,
+              ),
               leading: Container(
                 width: 40,
                 height: 40,
@@ -307,7 +315,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         const Text(
                           'Calculadora de Márgenes VE',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(

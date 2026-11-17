@@ -81,13 +81,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
       _productsSub = null;
       return;
     }
-    _productsSub = _productsService.streamProducts().listen(
-      (list) {
-        if (!mounted) return;
-        setState(() => _products = list);
-      },
-      onError: (_) {},
-    );
+    _productsSub = _productsService.streamProducts().listen((list) {
+      if (!mounted) return;
+      setState(() => _products = list);
+    }, onError: (_) {});
   }
 
   @override
@@ -176,9 +173,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
       ClipboardData(text: '${item.name}: ${fmtBs(finalPriceBs)} Bs'),
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Precio de "${item.name}" copiado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Precio de "${item.name}" copiado')));
   }
 
   Future<void> _shareProductWhatsApp(
@@ -195,7 +192,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
       rateValue: rateValue,
     );
     final fullMsg = '*Producto:* ${item.name}\n$baseMsg';
-    final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(fullMsg)}');
+    final uri = Uri.parse(
+      'https://wa.me/?text=${Uri.encodeComponent(fullMsg)}',
+    );
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       await Clipboard.setData(ClipboardData(text: fullMsg));
@@ -256,9 +255,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
             ),
             TextButton(
               onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AuthScreen()),
-                );
+                await Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
                 _refreshAll();
               },
               child: const Text('Entrar'),
@@ -270,9 +269,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Future<void> _openProPlans() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProPlansScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ProPlansScreen()));
     await _subService.refreshSubscription();
     if (!mounted) return;
     setState(() => _subState = _subService.currentState);
@@ -381,9 +380,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ),
       );
       if (shouldLogin == true && mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
         if (!mounted) return;
         await _refreshAll();
         if (!_authService.isSignedIn) return;
@@ -456,9 +455,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al eliminar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
     }
   }
 
@@ -466,7 +465,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (_products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Agrega al menos un producto para armar tu lista de precios.'),
+          content: Text(
+            'Agrega al menos un producto para armar tu lista de precios.',
+          ),
         ),
       );
       return;
@@ -492,30 +493,64 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Productos e Historial'),
+          title: const FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text('Productos e Historial'),
+          ),
           actions: [
             IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: context.appColors.surface,
+                foregroundColor: context.appColors.textPrimary,
+                side: BorderSide(color: context.appColors.borderSubtle),
+                shape: const CircleBorder(),
+                minimumSize: const Size(40, 40),
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Compartir lista de precios por WhatsApp',
               onPressed: _openSharePriceListModal,
             ),
             IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: context.appColors.surface,
+                foregroundColor: context.appColors.textPrimary,
+                side: BorderSide(color: context.appColors.borderSubtle),
+                shape: const CircleBorder(),
+                minimumSize: const Size(40, 40),
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               icon: Icon(
                 isSignedIn ? Icons.cloud_done : Icons.cloud_upload_outlined,
-                color: isSignedIn ? Theme.of(context).colorScheme.primary : null,
+                color: isSignedIn
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
               ),
               tooltip: isSignedIn
                   ? 'Sincronizado con Firebase'
                   : 'Iniciar sesión en la nube',
               onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AuthScreen()),
-                );
+                await Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
                 await _refreshAll();
               },
             ),
             IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: context.appColors.surface,
+                foregroundColor: context.appColors.textPrimary,
+                side: BorderSide(color: context.appColors.borderSubtle),
+                shape: const CircleBorder(),
+                minimumSize: const Size(40, 40),
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               icon: const Icon(Icons.refresh),
               tooltip: 'Actualizar precios y sincronizar',
               onPressed: _refreshAll,
@@ -527,20 +562,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 icon: Icon(Icons.inventory_2_outlined),
                 text: 'Catálogo de Productos',
               ),
-              Tab(
-                icon: Icon(Icons.history),
-                text: 'Historial Calculado',
-              ),
+              Tab(icon: Icon(Icons.history), text: 'Historial Calculado'),
             ],
           ),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(
-                children: [
-                  _buildProductsCatalogTab(),
-                  _buildHistoryTab(),
-                ],
+                children: [_buildProductsCatalogTab(), _buildHistoryTab()],
               ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _openProductForm(),
@@ -587,7 +616,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 child: Row(
                   children: [
                     ChoiceChip(
-                      label: const Text('Tasa de cada producto', style: TextStyle(fontSize: 12)),
+                      label: const Text(
+                        'Tasa de cada producto',
+                        style: TextStyle(fontSize: 12),
+                      ),
                       selected: _overrideSource == null,
                       onSelected: (_) => setState(() => _overrideSource = null),
                     ),
@@ -603,9 +635,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           style: const TextStyle(fontSize: 12),
                         ),
                         selected: _overrideSource == s,
-                        onSelected: (sel) => setState(
-                          () => _overrideSource = sel ? s : null,
-                        ),
+                        onSelected: (sel) =>
+                            setState(() => _overrideSource = sel ? s : null),
                       ),
                       const SizedBox(width: 8),
                     ],
@@ -621,7 +652,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     style: OutlinedButton.styleFrom(
                       backgroundColor: context.appColors.surface,
                       side: BorderSide(
-                        color: context.appColors.primary.withValues(alpha: 0.55),
+                        color: context.appColors.primary.withValues(
+                          alpha: 0.55,
+                        ),
                         width: 1.2,
                       ),
                     ),
@@ -630,7 +663,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       size: 19,
                       color: context.appColors.primary,
                     ),
-                    label: const Text('Compartir lista de precios por WhatsApp'),
+                    label: const Text(
+                      'Compartir lista de precios por WhatsApp',
+                    ),
                   ),
                 ),
               ],
@@ -643,15 +678,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      (AuthService.isFirebaseInitialized && !_authService.isSignedIn)
+                      (AuthService.isFirebaseInitialized &&
+                              !_authService.isSignedIn)
                           ? 'Inicia sesión con tu cuenta de Google o correo\n'
-                              'para guardar y ver tus productos sincronizados\n'
-                              'entre tu teléfono y la web.'
+                                'para guardar y ver tus productos sincronizados\n'
+                                'entre tu teléfono y la web.'
                           : _products.isEmpty
-                              ? 'Aún no tienes productos guardados en esta cuenta.\n'
-                                  'Toca "Agregar producto" abajo para guardar tus productos '
-                                  'y ver su precio en bolívares al instante todos los días.'
-                              : 'No se encontraron productos que coincidan con "$query".',
+                          ? 'Aún no tienes productos guardados en esta cuenta.\n'
+                                'Toca "Agregar producto" abajo para guardar tus productos '
+                                'y ver su precio en bolívares al instante todos los días.'
+                          : 'No se encontraron productos que coincidan con "$query".',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: context.appColors.textSecondary),
                     ),
@@ -668,7 +704,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       final source = _effectiveSourceForProduct(item);
                       final priceBs = item.livePriceBs(rate);
                       final bd = item.liveBreakdown(rate);
-                      final totalCommPct = (item.commissionPlatform +
+                      final totalCommPct =
+                          (item.commissionPlatform +
                               item.commissionPaymentMethod +
                               item.commissionOther) *
                           100;
@@ -696,7 +733,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           item.name,
@@ -792,8 +830,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                       style: OutlinedButton.styleFrom(
                                         backgroundColor: colors.surfaceElevated,
                                         side: BorderSide(
-                                          color: colors.primary
-                                              .withValues(alpha: 0.45),
+                                          color: colors.primary.withValues(
+                                            alpha: 0.45,
+                                          ),
                                         ),
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 16,
@@ -815,7 +854,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                       color: colors.textSecondary,
                                     ),
                                     tooltip: 'Editar producto',
-                                    onPressed: () => _openProductForm(existing: item),
+                                    onPressed: () =>
+                                        _openProductForm(existing: item),
                                   ),
                                   IconButton(
                                     icon: Icon(
@@ -883,7 +923,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
               TextButton.icon(
                 onPressed: () async {
                   await _historyService.clearHistory();
-                  final updated = await _historyService.getHistory(syncRemote: false);
+                  final updated = await _historyService.getHistory(
+                    syncRemote: false,
+                  );
                   if (mounted) setState(() => _history = updated);
                 },
                 icon: const Icon(Icons.delete_sweep_outlined, size: 18),
@@ -898,7 +940,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
             itemCount: _history.length,
             itemBuilder: (context, index) {
               final entry = _history[index];
-              final totalCommPct = (entry.commissionPlatform +
+              final totalCommPct =
+                  (entry.commissionPlatform +
                       entry.commissionPaymentMethod +
                       entry.commissionOther) *
                   100;
@@ -932,10 +975,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         tooltip: 'Copiar precio',
                         onPressed: () {
                           Clipboard.setData(
-                            ClipboardData(text: '${fmtBs(entry.finalPriceBs)} Bs'),
+                            ClipboardData(
+                              text: '${fmtBs(entry.finalPriceBs)} Bs',
+                            ),
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Precio histórico copiado')),
+                            const SnackBar(
+                              content: Text('Precio histórico copiado'),
+                            ),
                           );
                         },
                       ),
@@ -944,8 +991,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         tooltip: 'Eliminar del historial',
                         onPressed: () async {
                           await _historyService.deleteHistoryEntry(entry.id);
-                          final updated =
-                              await _historyService.getHistory(syncRemote: false);
+                          final updated = await _historyService.getHistory(
+                            syncRemote: false,
+                          );
                           if (mounted) setState(() => _history = updated);
                         },
                       ),
@@ -1021,10 +1069,12 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
         : (catMap[existingCat.toLowerCase()] ?? existingCat);
     _categoryCtrl = TextEditingController();
     _costCtrl = TextEditingController(text: e != null ? _fmt(e.costUsd) : '10');
-    _marginCtrl =
-        TextEditingController(text: e != null ? _fmt(e.marginPercent) : '20');
-    _fixedCtrl =
-        TextEditingController(text: e != null ? _fmt(e.fixedExpenseBs) : '0');
+    _marginCtrl = TextEditingController(
+      text: e != null ? _fmt(e.marginPercent) : '20',
+    );
+    _fixedCtrl = TextEditingController(
+      text: e != null ? _fmt(e.fixedExpenseBs) : '0',
+    );
     _provCtrl = TextEditingController(
       text: e != null ? _fmt(e.commissionPlatform * 100) : '2',
     );
@@ -1037,7 +1087,9 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     _customRateCtrl = TextEditingController(
       text: e?.customRateValue != null
           ? _fmt(e!.customRateValue!)
-          : (widget.defaultCustomRate > 0 ? _fmt(widget.defaultCustomRate) : ''),
+          : (widget.defaultCustomRate > 0
+                ? _fmt(widget.defaultCustomRate)
+                : ''),
     );
     _rateSource = e?.rateSource ?? RateSource.bcvUsd;
     _marginMode = e?.marginMode ?? MarginMode.onCost;
@@ -1074,21 +1126,22 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
         (double.tryParse(_gatewayCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
     final other =
         (double.tryParse(_otherCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
-    final customRate =
-        double.tryParse(_customRateCtrl.text.replaceAll(',', '.'));
+    final customRate = double.tryParse(
+      _customRateCtrl.text.replaceAll(',', '.'),
+    );
 
     if (name.isEmpty) {
       setState(() => _error = 'Escribe el nombre del producto.');
       return;
     }
     if (name.length > 120) {
-      setState(
-        () => _error = 'El nombre no puede superar los 120 caracteres.',
-      );
+      setState(() => _error = 'El nombre no puede superar los 120 caracteres.');
       return;
     }
-    final category =
-        resolveSelectedCategory(_selectedCategory, _categoryCtrl.text);
+    final category = resolveSelectedCategory(
+      _selectedCategory,
+      _categoryCtrl.text,
+    );
     if (_selectedCategory == kNewCategorySentinel && category.isEmpty) {
       setState(
         () => _error =
@@ -1107,15 +1160,12 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
       return;
     }
     if (marginPct < 0 || marginPct >= 100) {
-      setState(
-        () => _error = 'El margen debe estar entre 0 % y 99,9 %.',
-      );
+      setState(() => _error = 'El margen debe estar entre 0 % y 99,9 %.');
       return;
     }
-    if (_rateSource == RateSource.custom && (customRate == null || customRate <= 0)) {
-      setState(
-        () => _error = 'Escribe una tasa personalizada mayor que 0.',
-      );
+    if (_rateSource == RateSource.custom &&
+        (customRate == null || customRate <= 0)) {
+      setState(() => _error = 'Escribe una tasa personalizada mayor que 0.');
       return;
     }
     if (_marginMode == MarginMode.onCost) {
@@ -1126,7 +1176,8 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     } else {
       if ((prov + gateway + other + (marginPct / 100)) >= 1.0) {
         setState(
-          () => _error = 'La suma de comisiones y margen debe ser menor al 100 %.',
+          () => _error =
+              'La suma de comisiones y margen debe ser menor al 100 %.',
         );
         return;
       }
@@ -1188,7 +1239,10 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
             const SizedBox(height: 10),
             Row(
               children: [
-                const Text('Modo de cálculo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text(
+                  'Modo de cálculo',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
                 const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.help_outline, size: 18),
@@ -1237,8 +1291,9 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                 Expanded(
                   child: TextField(
                     controller: _costCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(labelText: 'Costo (USD)'),
                   ),
                 ),
@@ -1246,8 +1301,9 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                 Expanded(
                   child: TextField(
                     controller: _marginCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: _marginMode == MarginMode.onCost
                           ? 'Margen s/costo (%)'
@@ -1259,10 +1315,12 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                 Expanded(
                   child: TextField(
                     controller: _fixedCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'Gasto fijo (Bs)'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Gasto fijo (Bs)',
+                    ),
                   ),
                 ),
               ],
@@ -1273,28 +1331,33 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                 Expanded(
                   child: TextField(
                     controller: _provCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'Plataforma (%)'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Plataforma (%)',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _gatewayCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'Pago Móvil (%)'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Pago Móvil (%)',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _otherCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(labelText: 'Otra (%)'),
                   ),
                 ),
@@ -1317,8 +1380,9 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
               const SizedBox(height: 10),
               TextField(
                 controller: _customRateCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Tasa personalizada (Bs/\$)',
                 ),
@@ -1468,7 +1532,9 @@ class _SharePriceListSheetState extends State<_SharePriceListSheet> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('WhatsApp no disponible: lista copiada al portapapeles'),
+          content: Text(
+            'WhatsApp no disponible: lista copiada al portapapeles',
+          ),
         ),
       );
     } else if (mounted) {
@@ -1479,8 +1545,9 @@ class _SharePriceListSheetState extends State<_SharePriceListSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final uncatCount =
-        widget.products.where((p) => p.category.trim().isEmpty).length;
+    final uncatCount = widget.products
+        .where((p) => p.category.trim().isEmpty)
+        .length;
     final hasAnySelected =
         _selectedCategories.isNotEmpty || _includeUncategorized;
 
@@ -1635,8 +1702,8 @@ class _SharePriceListSheetState extends State<_SharePriceListSheet> {
                   child: OutlinedButton.icon(
                     onPressed:
                         (!hasAnySelected || _previewCtrl.text.trim().isEmpty)
-                            ? null
-                            : _copyMessage,
+                        ? null
+                        : _copyMessage,
                     icon: const Icon(Icons.copy, size: 18),
                     label: const Text('Copiar lista'),
                   ),
@@ -1646,8 +1713,8 @@ class _SharePriceListSheetState extends State<_SharePriceListSheet> {
                   child: FilledButton.icon(
                     onPressed:
                         (!hasAnySelected || _previewCtrl.text.trim().isEmpty)
-                            ? null
-                            : _sendWhatsApp,
+                        ? null
+                        : _sendWhatsApp,
                     icon: const Icon(Icons.send, size: 18),
                     label: const Text('WhatsApp'),
                   ),
@@ -1660,4 +1727,3 @@ class _SharePriceListSheetState extends State<_SharePriceListSheet> {
     );
   }
 }
-

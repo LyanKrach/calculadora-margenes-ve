@@ -50,14 +50,25 @@ class _RatesScreenState extends State<RatesScreen> {
   Widget build(BuildContext context) {
     final fmt = DateFormat('dd/MM/yyyy HH:mm', 'es_VE');
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Tasas del día'),
         actions: [
           IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: context.appColors.surface,
+              foregroundColor: context.appColors.textPrimary,
+              side: BorderSide(color: context.appColors.borderSubtle),
+              shape: const CircleBorder(),
+              minimumSize: const Size(40, 40),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
             onPressed: _refresh,
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: _loading
@@ -209,21 +220,21 @@ class _RatesScreenState extends State<RatesScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.swap_vert,
-                  color: accentColor,
-                ),
+                Icon(Icons.swap_vert, color: accentColor),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Brecha Cambiaria (Binance vs BCV)',
-                    style: AppTypography.sectionTitle(context).copyWith(
-                      color: accentColor,
-                    ),
+                    style: AppTypography.sectionTitle(
+                      context,
+                    ).copyWith(color: accentColor),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(999),
@@ -248,9 +259,9 @@ class _RatesScreenState extends State<RatesScreen> {
             Text(
               gapPercent >= 0
                   ? 'Si repones mercancía o compras divisas a tasa Binance (${fmtRate(binanceRate)} Bs) '
-                      'pero cobras a tasa oficial BCV (${fmtRate(bcvRate)} Bs), '
-                      'tu costo de reposición es un ${gapPercent.toStringAsFixed(1)} % mayor. '
-                      '¡Asegúrate de que tu margen cubra este diferencial!'
+                        'pero cobras a tasa oficial BCV (${fmtRate(bcvRate)} Bs), '
+                        'tu costo de reposición es un ${gapPercent.toStringAsFixed(1)} % mayor. '
+                        '¡Asegúrate de que tu margen cubra este diferencial!'
                   : 'La tasa Binance se encuentra por debajo de la tasa oficial BCV.',
               style: TextStyle(
                 fontSize: 13,

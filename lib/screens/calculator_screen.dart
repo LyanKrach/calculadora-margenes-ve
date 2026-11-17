@@ -56,12 +56,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   String? _ratesError;
   int _roundStep = 10;
 
-  double get _costUsd => double.tryParse(_costCtrl.text.replaceAll(',', '.')) ?? 0;
-  double get _margin => (double.tryParse(_marginCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
-  double get _prov => (double.tryParse(_provCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
-  double get _gateway => (double.tryParse(_gatewayCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
-  double get _other => (double.tryParse(_otherCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
-  double get _fixed => double.tryParse(_fixedCtrl.text.replaceAll(',', '.')) ?? 0;
+  double get _costUsd =>
+      double.tryParse(_costCtrl.text.replaceAll(',', '.')) ?? 0;
+  double get _margin =>
+      (double.tryParse(_marginCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+  double get _prov =>
+      (double.tryParse(_provCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+  double get _gateway =>
+      (double.tryParse(_gatewayCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+  double get _other =>
+      (double.tryParse(_otherCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+  double get _fixed =>
+      double.tryParse(_fixedCtrl.text.replaceAll(',', '.')) ?? 0;
   double get _totalCommission => _prov + _gateway + _other;
 
   double get _rate {
@@ -136,7 +142,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       _costCtrl.text = _formatCleanDouble(item.costUsd);
       _marginCtrl.text = _formatCleanDouble(item.marginPercent);
       _provCtrl.text = _formatCleanDouble(item.commissionPlatform * 100);
-      _gatewayCtrl.text = _formatCleanDouble(item.commissionPaymentMethod * 100);
+      _gatewayCtrl.text = _formatCleanDouble(
+        item.commissionPaymentMethod * 100,
+      );
       _otherCtrl.text = _formatCleanDouble(item.commissionOther * 100);
       _fixedCtrl.text = _formatCleanDouble(item.fixedExpenseBs);
       _roundStep = item.roundStep;
@@ -153,19 +161,17 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   void _onSelectHistory(HistoryEntry entry) {
     _applyCalculationParams(
       entry,
-      customRateOverride:
-          entry.rateSource == RateSource.custom ? entry.rateValue : null,
+      customRateOverride: entry.rateSource == RateSource.custom
+          ? entry.rateValue
+          : null,
     );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Cálculo "${entry.title}" cargado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Cálculo "${entry.title}" cargado')));
   }
 
   void _onSelectPreset(Preset preset) {
-    _applyCalculationParams(
-      preset,
-      customRateOverride: preset.customRateValue,
-    );
+    _applyCalculationParams(preset, customRateOverride: preset.customRateValue);
 
     String notice = 'Plantilla "${preset.title}" aplicada';
     if (preset.rateSource != RateSource.custom) {
@@ -181,9 +187,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(notice)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
   }
 
   /// Registra el cálculo actual en el historial (solo se invoca en acciones explícitas).
@@ -221,9 +225,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     await _recordCurrentToHistory(roundedPriceBs);
     await Clipboard.setData(ClipboardData(text: '${fmtBs(roundedPriceBs)} Bs'));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Precio copiado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Precio copiado')));
   }
 
   Future<void> _copyClientMessage(double roundedPriceBs) async {
@@ -231,9 +235,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     final msg = await _buildClientMessage(roundedPriceBs);
     await Clipboard.setData(ClipboardData(text: msg));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mensaje copiado')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Mensaje copiado')));
   }
 
   Future<void> _shareWhatsApp(double roundedPriceBs) async {
@@ -246,7 +250,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo abrir WhatsApp; mensaje copiado al portapapeles'),
+          content: Text(
+            'No se pudo abrir WhatsApp; mensaje copiado al portapapeles',
+          ),
         ),
       );
     }
@@ -281,9 +287,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         ),
       );
       if (shouldLogin == true && mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
         if (!mounted || !_authService.isSignedIn) return;
       } else {
         return;
@@ -292,7 +298,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
     if (!mounted) return;
 
-    final existingProducts = await _productsService.getProducts(syncRemote: false);
+    final existingProducts = await _productsService.getProducts(
+      syncRemote: false,
+    );
     if (!mounted) return;
     final existingCategories = extractUniqueCategories(existingProducts);
 
@@ -426,7 +434,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       builder: (_) => HistoryPresetsSheet(
         historyService: _historyService,
         ratesMap: _ratesMap,
-        customRate: double.tryParse(_customRateCtrl.text.replaceAll(',', '.')) ?? 0,
+        customRate:
+            double.tryParse(_customRateCtrl.text.replaceAll(',', '.')) ?? 0,
         onSelectHistory: _onSelectHistory,
         onSelectPreset: _onSelectPreset,
       ),
@@ -501,7 +510,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     final totalComm = _prov + _gateway + _other;
-    bool valid = _costUsd > 0 &&
+    bool valid =
+        _costUsd > 0 &&
         _rate > 0 &&
         _margin >= 0 &&
         _prov >= 0 &&
@@ -543,8 +553,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       }
     }
 
-    final inversePrice =
-        double.tryParse(_inversePriceCtrl.text.replaceAll(',', '.'));
+    final inversePrice = double.tryParse(
+      _inversePriceCtrl.text.replaceAll(',', '.'),
+    );
     final inverseMargin = (valid && inversePrice != null && inversePrice > 0)
         ? MarginCalculator.realMargin(
             costUsd: _costUsd,
@@ -557,30 +568,88 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         : null;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Calculadora de Márgenes VE'),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: context.appColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.appColors.primary.withValues(alpha: 0.6),
+                      blurRadius: 9,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text('Calculadora de Márgenes VE'),
+            ],
+          ),
+        ),
         actions: [
           IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: context.appColors.surface,
+              foregroundColor: context.appColors.textPrimary,
+              side: BorderSide(color: context.appColors.borderSubtle),
+              shape: const CircleBorder(),
+              minimumSize: const Size(40, 40),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             icon: const Icon(Icons.bookmarks_outlined),
             tooltip: 'Historial y plantillas',
             onPressed: _openHistoryPresetsSheet,
           ),
+          const SizedBox(width: 4),
           IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: context.appColors.surface,
+              foregroundColor: context.appColors.textPrimary,
+              side: BorderSide(color: context.appColors.borderSubtle),
+              shape: const CircleBorder(),
+              minimumSize: const Size(40, 40),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar tasas',
             onPressed: _loadRates,
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           // --- 4 tarjetas de tasa ---
-          Text(
-            'Tasa del día',
-            style: AppTypography.sectionTitle(context).copyWith(
-              color: context.appColors.primary,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: context.appColors.primary,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Tasa del día',
+                style: AppTypography.sectionTitle(
+                  context,
+                ).copyWith(color: context.appColors.primary),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (_loadingRates)
@@ -600,14 +669,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: TextField(
                 controller: _customRateCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Tasa personalizada (Bs/\$)',
                   hintText: 'Ej. 950,00',
                   suffixText: 'Bs/\$',
                 ),
                 onChanged: (_) async {
-                  final v = double.tryParse(_customRateCtrl.text.replaceAll(',', '.'));
+                  final v = double.tryParse(
+                    _customRateCtrl.text.replaceAll(',', '.'),
+                  );
                   if (v != null && v > 0) await _rates.setCustomRate(v);
                 },
               ),
@@ -617,7 +690,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           // --- Modo de Cálculo: Sobre costo vs Sobre venta ---
           Row(
             children: [
-              Text('Modo de margen', style: AppTypography.sectionTitle(context)),
+              Text(
+                'Modo de margen',
+                style: AppTypography.sectionTitle(context),
+              ),
               const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.help_outline, size: 20),
@@ -655,19 +731,27 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           // --- Inputs ---
           _numField(_costCtrl, 'Costo del producto (\$)', prefixText: '\$ '),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-              child: _numField(
-                _marginCtrl,
-                _marginMode == MarginMode.onCost
-                    ? 'Margen s/costo (%)'
-                    : 'Margen s/venta (%)',
-                suffixText: '%',
+          Row(
+            children: [
+              Expanded(
+                child: _numField(
+                  _marginCtrl,
+                  _marginMode == MarginMode.onCost
+                      ? 'Margen s/costo (%)'
+                      : 'Margen s/venta (%)',
+                  suffixText: '%',
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: _numField(_fixedCtrl, 'Gasto fijo (Bs)', suffixText: 'Bs')),
-          ]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _numField(
+                  _fixedCtrl,
+                  'Gasto fijo (Bs)',
+                  suffixText: 'Bs',
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           Text('Comisiones (%)', style: AppTypography.sectionTitle(context)),
           const SizedBox(height: 10),
@@ -702,13 +786,27 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: _numField(_provCtrl, 'Plataforma / Prov.', suffixText: '%')),
-            const SizedBox(width: 8),
-            Expanded(child: _numField(_gatewayCtrl, 'Pago Móvil / Pasarela', suffixText: '%')),
-            const SizedBox(width: 8),
-            Expanded(child: _numField(_otherCtrl, 'Otra', suffixText: '%')),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _numField(
+                  _provCtrl,
+                  'Plataforma / Prov.',
+                  suffixText: '%',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _numField(
+                  _gatewayCtrl,
+                  'Pago Móvil / Pasarela',
+                  suffixText: '%',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: _numField(_otherCtrl, 'Otra', suffixText: '%')),
+            ],
+          ),
           const SizedBox(height: 12),
           SegmentedButton<int>(
             segments: const [
@@ -741,7 +839,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               bd: bd,
             ),
             const SizedBox(height: 20),
-            Text('Desglose paso a paso', style: AppTypography.sectionTitle(context)),
+            Text(
+              'Desglose paso a paso',
+              style: AppTypography.sectionTitle(context),
+            ),
             const SizedBox(height: 10),
             _buildTimelineBreakdown(
               context: context,
@@ -759,57 +860,73 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             const SizedBox(height: 10),
             Card(
               child: Column(
-                children: MarginCalculator.comparisonTable(
-                  costUsd: _costUsd,
-                  rate: _rate,
-                  totalCommission: _totalCommission,
-                  fixedExpenseBs: _fixed,
-                  roundStep: _roundStep,
-                  marginMode: _marginMode,
-                ).map((row) {
-                  final isCurrent = row.margin == _margin;
-                  return Container(
-                    decoration: isCurrent
-                        ? BoxDecoration(
-                            color: context.appColors.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          )
-                        : null,
-                    child: ListTile(
-                      dense: true,
-                      title: Text(
-                        '${(row.margin * 100).toStringAsFixed(0)} %',
-                        style: TextStyle(
-                          fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                children:
+                    MarginCalculator.comparisonTable(
+                      costUsd: _costUsd,
+                      rate: _rate,
+                      totalCommission: _totalCommission,
+                      fixedExpenseBs: _fixed,
+                      roundStep: _roundStep,
+                      marginMode: _marginMode,
+                    ).map((row) {
+                      final isCurrent = row.margin == _margin;
+                      return Container(
+                        decoration: isCurrent
+                            ? BoxDecoration(
+                                color: context.appColors.primary.withValues(
+                                  alpha: 0.08,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              )
+                            : null,
+                        child: ListTile(
+                          dense: true,
+                          title: Text(
+                            '${(row.margin * 100).toStringAsFixed(0)} %',
+                            style: TextStyle(
+                              fontWeight: isCurrent
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          trailing: Text(
+                            '${fmtBs(row.roundedPriceBs)} Bs',
+                            style: TextStyle(
+                              fontWeight: isCurrent
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                              color: isCurrent
+                                  ? context.appColors.primary
+                                  : context.appColors.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Ganancia neta ${fmtBs(row.netProfitBs)} Bs',
+                            style: TextStyle(
+                              color: context.appColors.textSecondary,
+                            ),
+                          ),
                         ),
-                      ),
-                      trailing: Text(
-                        '${fmtBs(row.roundedPriceBs)} Bs',
-                        style: TextStyle(
-                          fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          color: isCurrent
-                              ? context.appColors.primary
-                              : context.appColors.textPrimary,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Ganancia neta ${fmtBs(row.netProfitBs)} Bs',
-                        style: TextStyle(color: context.appColors.textSecondary),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                      );
+                    }).toList(),
               ),
             ),
             const SizedBox(height: 20),
 
             // --- Calculadora inversa ---
-            Text('Calculadora inversa', style: AppTypography.sectionTitle(context)),
+            Text(
+              'Calculadora inversa',
+              style: AppTypography.sectionTitle(context),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _inversePriceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Precio actual que cobras (Bs)',
                 hintText: 'Ej. 12000',
@@ -863,7 +980,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           end: Alignment.bottomRight,
           colors: [colors.heroGradientStart, colors.heroGradientEnd],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: colors.heroBorder, width: 1.5),
         boxShadow: [
           BoxShadow(
@@ -873,130 +990,174 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'PRECIO DE VENTA',
-                style: AppTypography.overlineLabel(context).copyWith(
-                  color: Colors.white.withValues(alpha: 0.92),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(23),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -70,
+              right: -50,
+              child: Container(
+                width: 190,
+                height: 190,
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(999),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.30)),
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.10),
                 ),
-                child: Text(
-                  _marginMode.shortLabel,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+              ),
+            ),
+            Positioned(
+              bottom: -90,
+              left: -60,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.10),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'PRECIO DE VENTA',
+                        style: AppTypography.overlineLabel(
+                          context,
+                        ).copyWith(color: Colors.white.withValues(alpha: 0.92)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.30),
+                          ),
+                        ),
+                        child: Text(
+                          _marginMode.shortLabel,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.96, end: 1.0).animate(anim),
-                child: child,
-              ),
-            ),
-            child: FittedBox(
-              key: ValueKey(rounded),
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${fmtBs(rounded)} Bs',
-                style: AppTypography.heroPrice(context).copyWith(
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _roundStep == 0
-                ? 'Precio exacto · sin redondeo (≈ \$${fmtUsd(rounded / _rate)} USD)'
-                : 'Precio exacto: ${fmtBs(exact)} Bs · redondeado a Bs $_roundStep (≈ \$${fmtUsd(rounded / _rate)} USD)',
-            style: TextStyle(
-              fontSize: 12.5,
-              color: Colors.white.withValues(alpha: 0.90),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
-            ),
-            child: Text(
-              _marginMode == MarginMode.onCost
-                  ? 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                      'margen s/costo: ${(bd.realMarginOnCost * 100).toStringAsFixed(1)} % (s/venta: ${(bd.realMargin * 100).toStringAsFixed(1)} %)'
-                  : 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                      'margen real: ${(bd.realMargin * 100).toStringAsFixed(1)} %',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: () => _copyPrice(rounded),
-                style: FilledButton.styleFrom(
-                  side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.35),
+                  const SizedBox(height: 8),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.96,
+                          end: 1.0,
+                        ).animate(anim),
+                        child: child,
+                      ),
+                    ),
+                    child: FittedBox(
+                      key: ValueKey(rounded),
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${fmtBs(rounded)} Bs',
+                        style: AppTypography.heroPrice(
+                          context,
+                        ).copyWith(color: Colors.white),
+                      ),
+                    ),
                   ),
-                ),
-                icon: const Icon(Icons.copy, size: 17),
-                label: const Text('Copiar precio'),
+                  const SizedBox(height: 6),
+                  Text(
+                    _roundStep == 0
+                        ? 'Precio exacto · sin redondeo (≈ \$${fmtUsd(rounded / _rate)} USD)'
+                        : 'Precio exacto: ${fmtBs(exact)} Bs · redondeado a Bs $_roundStep (≈ \$${fmtUsd(rounded / _rate)} USD)',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.white.withValues(alpha: 0.90),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Text(
+                      _marginMode == MarginMode.onCost
+                          ? 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
+                                'margen s/costo: ${(bd.realMarginOnCost * 100).toStringAsFixed(1)} % (s/venta: ${(bd.realMargin * 100).toStringAsFixed(1)} %)'
+                          : 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
+                                'margen real: ${(bd.realMargin * 100).toStringAsFixed(1)} %',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _copyPrice(rounded),
+                        style: FilledButton.styleFrom(
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        icon: const Icon(Icons.copy, size: 17),
+                        label: const Text('Copiar precio'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _copyClientMessage(rounded),
+                        style: heroButtonStyle,
+                        icon: const Icon(Icons.message_outlined, size: 17),
+                        label: const Text('Mensaje cliente'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _shareWhatsApp(rounded),
+                        style: heroButtonStyle,
+                        icon: const Icon(Icons.send_outlined, size: 17),
+                        label: const Text('WhatsApp'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _promptSavePreset(rounded),
+                        style: heroButtonStyle,
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 17),
+                        label: const Text('Guardar como preset'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: () => _copyClientMessage(rounded),
-                style: heroButtonStyle,
-                icon: const Icon(Icons.message_outlined, size: 17),
-                label: const Text('Mensaje cliente'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _shareWhatsApp(rounded),
-                style: heroButtonStyle,
-                icon: const Icon(Icons.send_outlined, size: 17),
-                label: const Text('WhatsApp'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _promptSavePreset(rounded),
-                style: heroButtonStyle,
-                icon: const Icon(Icons.bookmark_add_outlined, size: 17),
-                label: const Text('Guardar como preset'),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1098,7 +1259,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         ? colors.primary
                         : colors.primary.withValues(alpha: 0.14),
                     border: Border.all(
-                      color: colors.primary.withValues(alpha: isCheck ? 1 : 0.6),
+                      color: colors.primary.withValues(
+                        alpha: isCheck ? 1 : 0.6,
+                      ),
                       width: 1.4,
                     ),
                   ),
@@ -1162,19 +1325,24 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     final selected = _selectedSource == source;
     final colors = context.appColors;
 
-    final String? effDateText = rate != null &&
+    final String? effDateText =
+        rate != null &&
             (source == RateSource.bcvUsd || source == RateSource.euroBcv) &&
             rate.effectiveDate != null &&
             rate.effectiveDate!.isNotEmpty
         ? formatEffectiveDate(rate.effectiveDate)
         : null;
 
-    final bool hasTodayBadge = selected &&
+    final bool hasTodayBadge =
+        selected &&
         rate != null &&
         (source == RateSource.bcvUsd || source == RateSource.euroBcv);
 
     final Color cardBg = selected
-        ? Color.alphaBlend(colors.primary.withValues(alpha: 0.12), colors.surface)
+        ? Color.alphaBlend(
+            colors.primary.withValues(alpha: 0.12),
+            colors.surface,
+          )
         : colors.surface;
 
     return Container(
@@ -1203,9 +1371,37 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 10,
+          ),
           onTap: () => setState(() => _selectedSource = source),
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: selected
+                  ? colors.primary.withValues(alpha: 0.16)
+                  : colors.surfaceElevated,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(
+                color: selected
+                    ? colors.primary.withValues(alpha: 0.55)
+                    : colors.borderSubtle,
+              ),
+            ),
+            child: Icon(
+              source == RateSource.bcvUsd
+                  ? Icons.account_balance_rounded
+                  : source == RateSource.binanceUsdt
+                  ? Icons.currency_bitcoin
+                  : source == RateSource.euroBcv
+                  ? Icons.euro_rounded
+                  : Icons.tune_rounded,
+              size: 21,
+              color: selected ? colors.primary : colors.textSecondary,
+            ),
+          ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1246,18 +1442,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               if (source == RateSource.custom)
                 Text(
                   'La escribes tú, sin internet',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colors.textSecondary,
-                  ),
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
                 )
               else if (rate == null)
                 Text(
                   'Sin datos',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colors.textSecondary,
-                  ),
+                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
                 )
               else ...[
                 Text(
@@ -1283,11 +1473,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             ],
           ),
           trailing: selected
-              ? Icon(
-                  Icons.check_circle,
-                  color: colors.primary,
-                  size: 28,
-                )
+              ? Icon(Icons.check_circle, color: colors.primary, size: 28)
               : null,
         ),
       ),
