@@ -21,7 +21,7 @@ import 'auth_screen.dart';
 import 'result_screen.dart';
 
 /// Pantalla principal estilo ArbiCalc (sin scroll vertical):
-/// - Carrusel horizontal de tasas (BCV $, Binance USDT, Euro BCV, Personalizada)
+/// - Fila de 4 tarjetas de tasa (BCV $, Binance USDT, Euro BCV, Personalizada)
 /// - Modo de margen (Sobre costo / Sobre venta) + fila compacta Costo, Margen y Gasto fijo
 /// - Comisiones como chips + 3 campos (Plataforma, Pago Móvil, Otra) + Redondeo como chips
 /// - Botón verde fijo "Calcular precio" abajo que abre [ResultScreen].
@@ -737,7 +737,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           final gap = ultraTight ? 4.0 : (tight ? 6.0 : 10.0);
           final cardPad = ultraTight ? 6.0 : (tight ? 8.5 : 11.0);
           final fieldGap = ultraTight ? 4.0 : (tight ? 6.0 : 8.5);
-          final rateCarouselHeight = ultraTight ? 46.0 : (tight ? 52.0 : 58.0);
+          final rateCarouselHeight = ultraTight ? 62.0 : (tight ? 64.0 : 68.0);
           final ctaHeight = ultraTight ? 38.0 : (tight ? 43.0 : 48.0);
           final inputHeight = ultraTight ? 32.0 : (tight ? 36.0 : 41.0);
 
@@ -785,7 +785,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   SizedBox(height: gap),
                 ],
 
-                // 1. Selector de tasa como CARRUSEL HORIZONTAL de tarjetas compactas
+                // 1. Selector de tasa: las 4 tarjetas en una sola fila (sin scroll horizontal)
                 Container(
                   padding: EdgeInsets.all(cardPad),
                   decoration: BoxDecoration(
@@ -826,15 +826,20 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                               ),
                             ),
                           ],
-                          const Spacer(),
-                          Text(
-                            _rate > 0
-                                ? '${_selectedSource.label} · ${fmtRate(_rate)} ${_selectedSource.unit}'
-                                : _selectedSource.label,
-                            style: TextStyle(
-                              fontSize: ultraTight ? 10.5 : 11.5,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textSecondary,
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _rate > 0
+                                  ? '${_selectedSource.label} · ${fmtRate(_rate)} ${_selectedSource.unit}'
+                                  : _selectedSource.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: ultraTight ? 10.5 : 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textSecondary,
+                              ),
                             ),
                           ),
                         ],
@@ -842,14 +847,20 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       SizedBox(height: ultraTight ? 4 : 6),
                       SizedBox(
                         height: rateCarouselHeight,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: RateSource.values.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 6),
-                          itemBuilder: (ctx, idx) => _rateCarouselCard(
-                            RateSource.values[idx],
-                            ultraTight: ultraTight,
-                          ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (
+                              var i = 0;
+                              i < RateSource.values.length;
+                              i++
+                            ) ...[
+                              if (i > 0) const SizedBox(width: 6),
+                              Expanded(
+                                child: _rateCarouselCard(RateSource.values[i]),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                       if (_selectedSource == RateSource.custom) ...[
@@ -888,6 +899,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 ),
 
                 SizedBox(height: gap),
+
+                const Spacer(flex: 1),
 
                 // 2. Modo de margen (segmento) + Costo, Margen y Gasto fijo en una fila
                 Container(
@@ -1020,6 +1033,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 ),
 
                 SizedBox(height: gap),
+
+                const Spacer(flex: 1),
 
                 // 3. Comisiones (chips + 3 campos) y Redondeo (chips)
                 Container(
@@ -1184,9 +1199,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                                   ),
                                 ),
                                 segments: const [
-                                  ButtonSegment(value: 0, label: Text('Exacto')),
-                                  ButtonSegment(value: 10, label: Text('Bs 10')),
-                                  ButtonSegment(value: 50, label: Text('Bs 50')),
+                                  ButtonSegment(
+                                    value: 0,
+                                    label: Text('Exacto'),
+                                  ),
+                                  ButtonSegment(
+                                    value: 10,
+                                    label: Text('Bs 10'),
+                                  ),
+                                  ButtonSegment(
+                                    value: 50,
+                                    label: Text('Bs 50'),
+                                  ),
                                   ButtonSegment(
                                     value: 100,
                                     label: Text('Bs 100'),
@@ -1214,10 +1238,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          colors.primary,
-                          colors.primaryDark,
-                        ],
+                        colors: [colors.primary, colors.primaryDark],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -1271,7 +1292,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
-  Widget _rateCarouselCard(RateSource source, {required bool ultraTight}) {
+  Widget _rateCarouselCard(RateSource source) {
     final rate = _ratesMap[source];
     final selected = _selectedSource == source;
     final colors = context.appColors;
@@ -1281,26 +1302,34 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         (source == RateSource.bcvUsd || source == RateSource.euroBcv);
 
     final String subtitleText;
+    var isNumericRate = true;
     if (source == RateSource.custom) {
       final customVal =
           double.tryParse(_customRateCtrl.text.replaceAll(',', '.')) ?? 0;
       subtitleText = customVal > 0
           ? '${fmtRate(customVal)} Bs/\$'
           : 'La escribes tú, sin internet';
+      isNumericRate = customVal > 0;
     } else if (rate == null) {
       subtitleText = 'Sin datos';
     } else {
       subtitleText = '${fmtRate(rate.value)} ${source.unit}';
     }
 
+    final valueStyle = TextStyle(
+      fontSize: 10.5,
+      fontWeight: FontWeight.w700,
+      color: selected ? colors.primary : colors.textMuted,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
     return GestureDetector(
+      key: Key('rate_card_${source.name}'),
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _selectedSource = source),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: EdgeInsets.symmetric(
-          horizontal: ultraTight ? 8 : 10,
-          vertical: ultraTight ? 4 : 6,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
         decoration: BoxDecoration(
           color: selected
               ? colors.primary.withValues(alpha: 0.16)
@@ -1311,96 +1340,80 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: ultraTight ? 24 : 28,
-              height: ultraTight ? 24 : 28,
-              decoration: BoxDecoration(
-                color: selected
-                    ? colors.primary.withValues(alpha: 0.20)
-                    : colors.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: selected
-                      ? colors.primary.withValues(alpha: 0.6)
-                      : colors.borderSubtle,
-                ),
-              ),
-              child: Icon(
-                source == RateSource.bcvUsd
-                    ? Icons.account_balance_rounded
-                    : source == RateSource.binanceUsdt
-                    ? Icons.currency_bitcoin
-                    : source == RateSource.euroBcv
-                    ? Icons.euro_rounded
-                    : Icons.tune_rounded,
-                size: ultraTight ? 13 : 15,
-                color: selected ? colors.primary : colors.textSecondary,
-              ),
-            ),
-            const SizedBox(width: 7),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Row(
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      source.label,
-                      style: TextStyle(
-                        fontSize: ultraTight ? 11 : 12,
-                        fontWeight: FontWeight.w800,
-                        color: selected
-                            ? colors.textPrimary
-                            : colors.textSecondary,
+                Icon(
+                  source == RateSource.bcvUsd
+                      ? Icons.account_balance_rounded
+                      : source == RateSource.binanceUsdt
+                      ? Icons.currency_bitcoin
+                      : source == RateSource.euroBcv
+                      ? Icons.euro_rounded
+                      : Icons.tune_rounded,
+                  size: 20,
+                  color: selected ? colors.primary : colors.textSecondary,
+                ),
+                if (hasTodayBadge) ...[
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 0.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: 0.20),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Hoy',
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: colors.primary,
+                        ),
                       ),
                     ),
-                    if (hasTodayBadge) ...[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.20),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Hoy',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: colors.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (selected) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.check_circle,
-                        color: colors.primary,
-                        size: ultraTight ? 13 : 15,
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitleText,
-                  style: TextStyle(
-                    fontSize: ultraTight ? 10.5 : 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? colors.primary : colors.textMuted,
-                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                ),
+                ],
+                const Spacer(),
+                if (selected)
+                  Icon(Icons.check_circle, color: colors.primary, size: 13),
               ],
             ),
+            const SizedBox(height: 1),
+            Text(
+              source.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: selected ? colors.textPrimary : colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 1),
+            if (isNumericRate)
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(subtitleText, maxLines: 1, style: valueStyle),
+              )
+            else
+              Text(
+                subtitleText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: valueStyle.copyWith(fontSize: 9.5),
+              ),
           ],
         ),
       ),

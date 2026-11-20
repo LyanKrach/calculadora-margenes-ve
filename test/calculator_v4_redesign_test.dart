@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:calculadora_margenes_ve/models/rate.dart';
 import 'package:calculadora_margenes_ve/screens/calculator_screen.dart';
 import 'package:calculadora_margenes_ve/screens/result_screen.dart';
 import 'package:calculadora_margenes_ve/theme/app_theme.dart';
@@ -40,7 +41,7 @@ void main() {
   });
 
   group('Rediseño v4 estilo ArbiCalc: Calculadora sin scroll + ResultScreen', () {
-    testWidgets('Calculadora no tiene scroll vertical y muestra carrusel horizontal de tasas con badge Hoy', (tester) async {
+    testWidgets('Calculadora no tiene scroll vertical y muestra las 4 tarjetas de tasa en una fila con badge Hoy', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.darkTheme,
@@ -52,7 +53,7 @@ void main() {
       // 1. Ningún SingleChildScrollView en CalculatorScreen
       expect(find.byType(SingleChildScrollView), findsNothing);
 
-      // 2. Ningún Scrollable vertical en CalculatorScreen (solo el carrusel horizontal de tasas)
+      // 2. Ningún Scrollable vertical en CalculatorScreen y sin carrusel (ListView)
       final scrollables = tester.widgetList<Scrollable>(find.byType(Scrollable));
       final verticalScrollables = scrollables.where(
         (s) =>
@@ -60,14 +61,17 @@ void main() {
             s.axisDirection == AxisDirection.up,
       );
       expect(verticalScrollables, isEmpty);
-      expect(scrollables.isNotEmpty, isTrue);
+      expect(find.byType(ListView), findsNothing);
 
-      // 3. Las 4 tarjetas de tasa están en el carrusel horizontal y BCV muestra badge "Hoy"
+      // 3. Las 4 tarjetas de tasa están en una fila y BCV muestra badge "Hoy"
       expect(find.text('BCV dólar'), findsOneWidget);
       expect(find.text('Binance USDT'), findsOneWidget);
       expect(find.text('Euro BCV'), findsOneWidget);
       expect(find.text('Personalizada'), findsOneWidget);
       expect(find.text('Hoy'), findsWidgets);
+      for (final source in RateSource.values) {
+        expect(find.byKey(Key('rate_card_${source.name}')), findsOneWidget);
+      }
 
       // 4. Botón fijo "Calcular precio" visible sin necesidad de scroll
       expect(find.text('Calcular precio'), findsOneWidget);
