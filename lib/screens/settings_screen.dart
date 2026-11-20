@@ -322,7 +322,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Versión 1.1.0+3\n'
+                          'Versión 1.1.2+5\n'
                           'Para comerciantes en Venezuela: precios en bolívares calculados al instante con tasas BCV, Binance P2P y Euro oficial.\n\n'
                           'Soporta cálculo Sobre Costo (Markup directo) y Sobre Venta (Margen financiero limpio).',
                           style: TextStyle(

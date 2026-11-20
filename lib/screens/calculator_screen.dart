@@ -732,14 +732,39 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
           final tight = h < (560 + extraRows * 34);
           final ultraTight = h < (470 + extraRows * 30);
+          // En teléfonos altos (>= 650 lógicos) las secciones crecen de verdad:
+          // tarjetas de tasa 76 px, inputs 54 px, padding 16 px y chips/segmentos
+          // de 34/36 px. Las secciones se reparten el sobrante con Expanded.
+          final generous = h >= (650 + extraRows * 70);
 
-          final outerVPad = ultraTight ? 4.0 : (tight ? 6.0 : 10.0);
+          final outerVPad = ultraTight
+              ? 4.0
+              : (tight ? 6.0 : (generous ? 14.0 : 10.0));
           final gap = ultraTight ? 4.0 : (tight ? 6.0 : 10.0);
-          final cardPad = ultraTight ? 6.0 : (tight ? 8.5 : 11.0);
-          final fieldGap = ultraTight ? 4.0 : (tight ? 6.0 : 8.5);
-          final rateCarouselHeight = ultraTight ? 62.0 : (tight ? 64.0 : 68.0);
-          final ctaHeight = ultraTight ? 38.0 : (tight ? 43.0 : 48.0);
-          final inputHeight = ultraTight ? 32.0 : (tight ? 36.0 : 41.0);
+          final cardPad = ultraTight
+              ? 6.0
+              : (tight ? 8.5 : (generous ? 16.0 : 11.0));
+          final fieldGap = ultraTight
+              ? 4.0
+              : (tight ? 6.0 : (generous ? 10.0 : 8.5));
+          final rateCarouselHeight = ultraTight
+              ? 62.0
+              : (tight ? 64.0 : (generous ? 76.0 : 68.0));
+          final ctaHeight = ultraTight
+              ? 38.0
+              : (tight ? 43.0 : (generous ? 52.0 : 48.0));
+          final inputHeight = ultraTight
+              ? 32.0
+              : (tight ? 36.0 : (generous ? 54.0 : 41.0));
+          final segmentHeight = ultraTight
+              ? 26.0
+              : (tight ? 30.0 : (generous ? 36.0 : 30.0));
+          final chipHeight = ultraTight
+              ? 25.0
+              : (tight ? 29.0 : (generous ? 34.0 : 29.0));
+          // El selector de tasa necesita más alto cuando aparece el campo de
+          // tasa personalizada; así el reparto flex no lo comprime.
+          final rateFlex = extraRows > 0 ? 6 : 5;
 
           return Padding(
             padding: EdgeInsets.symmetric(horizontal: 12, vertical: outerVPad),
@@ -786,449 +811,462 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 ],
 
                 // 1. Selector de tasa: las 4 tarjetas en una sola fila (sin scroll horizontal)
-                Container(
-                  padding: EdgeInsets.all(cardPad),
-                  decoration: BoxDecoration(
-                    color: colors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: colors.borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 3.5,
-                            height: 13,
-                            decoration: BoxDecoration(
-                              color: colors.primary,
-                              borderRadius: BorderRadius.circular(99),
+                Expanded(
+                  flex: rateFlex,
+                  child: Container(
+                    key: const Key('rate_section'),
+                    padding: EdgeInsets.all(cardPad),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colors.borderSubtle),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 3.5,
+                              height: 13,
+                              decoration: BoxDecoration(
+                                color: colors.primary,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Tasa del día',
-                            style: TextStyle(
-                              fontSize: ultraTight ? 11.5 : 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: colors.primary,
-                            ),
-                          ),
-                          if (_loadingRates) ...[
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 11,
-                              height: 11,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.8,
+                            const SizedBox(width: 6),
+                            Text(
+                              'Tasa del día',
+                              style: TextStyle(
+                                fontSize: ultraTight ? 11.5 : 12.5,
+                                fontWeight: FontWeight.w800,
                                 color: colors.primary,
                               ),
                             ),
+                            if (_loadingRates) ...[
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 11,
+                                height: 11,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _rate > 0
+                                    ? '${_selectedSource.label} · ${fmtRate(_rate)} ${_selectedSource.unit}'
+                                    : _selectedSource.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end,
+                                style: TextStyle(
+                                  fontSize: ultraTight ? 10.5 : 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ),
                           ],
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _rate > 0
-                                  ? '${_selectedSource.label} · ${fmtRate(_rate)} ${_selectedSource.unit}'
-                                  : _selectedSource.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.end,
+                        ),
+                        SizedBox(height: ultraTight ? 4 : 6),
+                        SizedBox(
+                          height: rateCarouselHeight,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (
+                                var i = 0;
+                                i < RateSource.values.length;
+                                i++
+                              ) ...[
+                                if (i > 0) const SizedBox(width: 6),
+                                Expanded(
+                                  child: _rateCarouselCard(
+                                    RateSource.values[i],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (_selectedSource == RateSource.custom) ...[
+                          SizedBox(height: fieldGap),
+                          SizedBox(
+                            height: inputHeight,
+                            child: TextField(
+                              controller: _customRateCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              style: TextStyle(
+                                fontSize: ultraTight ? 12.5 : 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              decoration: _compactDecoration(
+                                labelText: 'Tasa personalizada (Bs/\$)',
+                                hintText: 'Ej. 950,00',
+                                suffixText: 'Bs/\$',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                              onChanged: (_) async {
+                                final v = double.tryParse(
+                                  _customRateCtrl.text.replaceAll(',', '.'),
+                                );
+                                if (v != null && v > 0) {
+                                  await _rates.setCustomRate(v);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: gap),
+
+                // 2. Modo de margen (segmento) + Costo, Margen y Gasto fijo en una fila
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    key: const Key('margin_section'),
+                    padding: EdgeInsets.all(cardPad),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colors.borderSubtle),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Modo de margen',
+                              style: TextStyle(
+                                fontSize: ultraTight ? 11.5 : 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: Icon(
+                                  Icons.help_outline,
+                                  size: 15,
+                                  color: colors.textSecondary,
+                                ),
+                                tooltip:
+                                    '¿Cómo se calcula el precio y la tasa?',
+                                onPressed: _showMarginModeExplanation,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: SizedBox(
+                                height: segmentHeight,
+                                child: SegmentedButton<MarginMode>(
+                                  showSelectedIcon: false,
+                                  style: ButtonStyle(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: const WidgetStatePropertyAll(
+                                      EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 0,
+                                      ),
+                                    ),
+                                    textStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: ultraTight ? 10.5 : 11.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: MarginMode.onCost,
+                                      label: Text('Sobre costo'),
+                                    ),
+                                    ButtonSegment(
+                                      value: MarginMode.onSale,
+                                      label: Text('Sobre venta'),
+                                    ),
+                                  ],
+                                  selected: {_marginMode},
+                                  onSelectionChanged: (s) =>
+                                      setState(() => _marginMode = s.first),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: fieldGap),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 11,
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _costCtrl,
+                                  'Costo del producto (\$)',
+                                  prefixText: '\$ ',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              flex: 11,
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _marginCtrl,
+                                  _marginMode == MarginMode.onCost
+                                      ? 'Margen s/costo (%)'
+                                      : 'Margen s/venta (%)',
+                                  suffixText: '%',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              flex: 9,
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _fixedCtrl,
+                                  'Gasto fijo (Bs)',
+                                  suffixText: 'Bs',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: gap),
+
+                // 3. Comisiones (chips + 3 campos) y Redondeo (chips)
+                Expanded(
+                  flex: 7,
+                  child: Container(
+                    key: const Key('commissions_section'),
+                    padding: EdgeInsets.all(cardPad),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colors.borderSubtle),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Comisiones (%)',
+                              style: TextStyle(
+                                fontSize: ultraTight ? 11.5 : 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: colors.primary.withValues(alpha: 0.4),
+                                ),
+                              ),
+                              child: Text(
+                                'Total ${(_totalCommission * 100).toStringAsFixed(1)}%',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: ultraTight ? 3 : 5),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _commissionChip(
+                                label: '0.3% Pago Móvil',
+                                ctrl: _gatewayCtrl,
+                                targetValue: 0.3,
+                                height: chipHeight,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: _commissionChip(
+                                label: '3.0% Pasarela',
+                                ctrl: _gatewayCtrl,
+                                targetValue: 3.0,
+                                height: chipHeight,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: _commissionChip(
+                                label: '1.5% Binance P2P',
+                                ctrl: _provCtrl,
+                                targetValue: 1.5,
+                                height: chipHeight,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: _commissionChip(
+                                label: '2.0% Operativa',
+                                ctrl: _provCtrl,
+                                targetValue: 2.0,
+                                height: chipHeight,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: fieldGap),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _provCtrl,
+                                  'Plataforma / Prov.',
+                                  suffixText: '%',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _gatewayCtrl,
+                                  'Pago Móvil / Pasarela',
+                                  suffixText: '%',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: SizedBox(
+                                height: inputHeight,
+                                child: _numField(
+                                  _otherCtrl,
+                                  'Otra',
+                                  suffixText: '%',
+                                  ultraTight: ultraTight,
+                                  tight: tight,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: fieldGap),
+                        Row(
+                          children: [
+                            Text(
+                              'Redondeo',
                               style: TextStyle(
                                 fontSize: ultraTight ? 10.5 : 11.5,
                                 fontWeight: FontWeight.w800,
                                 color: colors.textSecondary,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: ultraTight ? 4 : 6),
-                      SizedBox(
-                        height: rateCarouselHeight,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (
-                              var i = 0;
-                              i < RateSource.values.length;
-                              i++
-                            ) ...[
-                              if (i > 0) const SizedBox(width: 6),
-                              Expanded(
-                                child: _rateCarouselCard(RateSource.values[i]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: SizedBox(
+                                height: segmentHeight,
+                                child: SegmentedButton<int>(
+                                  showSelectedIcon: false,
+                                  style: ButtonStyle(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: const WidgetStatePropertyAll(
+                                      EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 0,
+                                      ),
+                                    ),
+                                    textStyle: WidgetStatePropertyAll(
+                                      TextStyle(
+                                        fontSize: ultraTight ? 10.5 : 11.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: 0,
+                                      label: Text('Exacto'),
+                                    ),
+                                    ButtonSegment(
+                                      value: 10,
+                                      label: Text('Bs 10'),
+                                    ),
+                                    ButtonSegment(
+                                      value: 50,
+                                      label: Text('Bs 50'),
+                                    ),
+                                    ButtonSegment(
+                                      value: 100,
+                                      label: Text('Bs 100'),
+                                    ),
+                                  ],
+                                  selected: {_roundStep},
+                                  onSelectionChanged: (s) =>
+                                      setState(() => _roundStep = s.first),
+                                ),
                               ),
-                            ],
+                            ),
                           ],
                         ),
-                      ),
-                      if (_selectedSource == RateSource.custom) ...[
-                        SizedBox(height: fieldGap),
-                        SizedBox(
-                          height: inputHeight,
-                          child: TextField(
-                            controller: _customRateCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            style: TextStyle(
-                              fontSize: ultraTight ? 12.5 : 13.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            decoration: _compactDecoration(
-                              labelText: 'Tasa personalizada (Bs/\$)',
-                              hintText: 'Ej. 950,00',
-                              suffixText: 'Bs/\$',
-                              ultraTight: ultraTight,
-                              tight: tight,
-                            ),
-                            onChanged: (_) async {
-                              final v = double.tryParse(
-                                _customRateCtrl.text.replaceAll(',', '.'),
-                              );
-                              if (v != null && v > 0) {
-                                await _rates.setCustomRate(v);
-                              }
-                            },
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-
-                SizedBox(height: gap),
-
-                const Spacer(flex: 1),
-
-                // 2. Modo de margen (segmento) + Costo, Margen y Gasto fijo en una fila
-                Container(
-                  padding: EdgeInsets.all(cardPad),
-                  decoration: BoxDecoration(
-                    color: colors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: colors.borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Modo de margen',
-                            style: TextStyle(
-                              fontSize: ultraTight ? 11.5 : 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              icon: Icon(
-                                Icons.help_outline,
-                                size: 15,
-                                color: colors.textSecondary,
-                              ),
-                              tooltip: '¿Cómo se calcula el precio y la tasa?',
-                              onPressed: _showMarginModeExplanation,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: SizedBox(
-                              height: ultraTight ? 26 : 30,
-                              child: SegmentedButton<MarginMode>(
-                                showSelectedIcon: false,
-                                style: ButtonStyle(
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  padding: const WidgetStatePropertyAll(
-                                    EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 0,
-                                    ),
-                                  ),
-                                  textStyle: WidgetStatePropertyAll(
-                                    TextStyle(
-                                      fontSize: ultraTight ? 10.5 : 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                segments: const [
-                                  ButtonSegment(
-                                    value: MarginMode.onCost,
-                                    label: Text('Sobre costo'),
-                                  ),
-                                  ButtonSegment(
-                                    value: MarginMode.onSale,
-                                    label: Text('Sobre venta'),
-                                  ),
-                                ],
-                                selected: {_marginMode},
-                                onSelectionChanged: (s) =>
-                                    setState(() => _marginMode = s.first),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: fieldGap),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 11,
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _costCtrl,
-                                'Costo del producto (\$)',
-                                prefixText: '\$ ',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            flex: 11,
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _marginCtrl,
-                                _marginMode == MarginMode.onCost
-                                    ? 'Margen s/costo (%)'
-                                    : 'Margen s/venta (%)',
-                                suffixText: '%',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            flex: 9,
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _fixedCtrl,
-                                'Gasto fijo (Bs)',
-                                suffixText: 'Bs',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: gap),
-
-                const Spacer(flex: 1),
-
-                // 3. Comisiones (chips + 3 campos) y Redondeo (chips)
-                Container(
-                  padding: EdgeInsets.all(cardPad),
-                  decoration: BoxDecoration(
-                    color: colors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: colors.borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Comisiones (%)',
-                            style: TextStyle(
-                              fontSize: ultraTight ? 11.5 : 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: colors.primary.withValues(alpha: 0.4),
-                              ),
-                            ),
-                            child: Text(
-                              'Total ${(_totalCommission * 100).toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: colors.primary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: ultraTight ? 3 : 5),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _commissionChip(
-                              label: '0.3% Pago Móvil',
-                              ctrl: _gatewayCtrl,
-                              targetValue: 0.3,
-                              ultraTight: ultraTight,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: _commissionChip(
-                              label: '3.0% Pasarela',
-                              ctrl: _gatewayCtrl,
-                              targetValue: 3.0,
-                              ultraTight: ultraTight,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: _commissionChip(
-                              label: '1.5% Binance P2P',
-                              ctrl: _provCtrl,
-                              targetValue: 1.5,
-                              ultraTight: ultraTight,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: _commissionChip(
-                              label: '2.0% Operativa',
-                              ctrl: _provCtrl,
-                              targetValue: 2.0,
-                              ultraTight: ultraTight,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: fieldGap),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _provCtrl,
-                                'Plataforma / Prov.',
-                                suffixText: '%',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _gatewayCtrl,
-                                'Pago Móvil / Pasarela',
-                                suffixText: '%',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: SizedBox(
-                              height: inputHeight,
-                              child: _numField(
-                                _otherCtrl,
-                                'Otra',
-                                suffixText: '%',
-                                ultraTight: ultraTight,
-                                tight: tight,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: fieldGap),
-                      Row(
-                        children: [
-                          Text(
-                            'Redondeo',
-                            style: TextStyle(
-                              fontSize: ultraTight ? 10.5 : 11.5,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: ultraTight ? 26 : 30,
-                              child: SegmentedButton<int>(
-                                showSelectedIcon: false,
-                                style: ButtonStyle(
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  padding: const WidgetStatePropertyAll(
-                                    EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 0,
-                                    ),
-                                  ),
-                                  textStyle: WidgetStatePropertyAll(
-                                    TextStyle(
-                                      fontSize: ultraTight ? 10.5 : 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                segments: const [
-                                  ButtonSegment(
-                                    value: 0,
-                                    label: Text('Exacto'),
-                                  ),
-                                  ButtonSegment(
-                                    value: 10,
-                                    label: Text('Bs 10'),
-                                  ),
-                                  ButtonSegment(
-                                    value: 50,
-                                    label: Text('Bs 50'),
-                                  ),
-                                  ButtonSegment(
-                                    value: 100,
-                                    label: Text('Bs 100'),
-                                  ),
-                                ],
-                                selected: {_roundStep},
-                                onSelectionChanged: (s) =>
-                                    setState(() => _roundStep = s.first),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Spacer(),
 
                 SizedBox(height: gap),
 
@@ -1354,49 +1392,54 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       : source == RateSource.euroBcv
                       ? Icons.euro_rounded
                       : Icons.tune_rounded,
-                  size: 20,
+                  size: 14,
                   color: selected ? colors.primary : colors.textSecondary,
                 ),
-                if (hasTodayBadge) ...[
-                  const SizedBox(width: 2),
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 3,
-                        vertical: 0.5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.primary.withValues(alpha: 0.20),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'Hoy',
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: colors.primary,
-                        ),
+                const Spacer(),
+                if (hasTodayBadge)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                      vertical: 0.5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.20),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Hoy',
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        fontSize: 8,
+                        letterSpacing: 0,
+                        fontWeight: FontWeight.w800,
+                        color: colors.primary,
                       ),
                     ),
                   ),
+                if (selected) ...[
+                  if (hasTodayBadge) const SizedBox(width: 1),
+                  Icon(Icons.check_circle, color: colors.primary, size: 11),
                 ],
-                const Spacer(),
-                if (selected)
-                  Icon(Icons.check_circle, color: colors.primary, size: 13),
               ],
             ),
-            const SizedBox(height: 1),
-            Text(
-              source.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: selected ? colors.textPrimary : colors.textSecondary,
+            const SizedBox(height: 2),
+            // Etiqueta a todo el ancho debajo del icono. FittedBox la escala
+            // solo si hace falta, para que nunca se lea "Binance US..." ni
+            // "Personaliza...". El icono ya no compite por el ancho del texto.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                source.label,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: selected ? colors.textPrimary : colors.textSecondary,
+                ),
               ),
             ),
             const SizedBox(height: 1),
@@ -1407,12 +1450,15 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 child: Text(subtitleText, maxLines: 1, style: valueStyle),
               )
             else
-              Text(
-                subtitleText,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: valueStyle.copyWith(fontSize: 9.5),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  subtitleText,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: valueStyle.copyWith(fontSize: 9.5),
+                ),
               ),
           ],
         ),
@@ -1449,13 +1495,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     required String label,
     required TextEditingController ctrl,
     required double targetValue,
-    required bool ultraTight,
+    required double height,
   }) {
     final current = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0;
     final isSelected = (current - targetValue).abs() < 0.0001;
 
     return SizedBox(
-      height: ultraTight ? 25 : 29,
+      height: height,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: FilterChip(
