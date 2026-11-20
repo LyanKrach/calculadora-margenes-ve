@@ -713,18 +713,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       final isDark =
                           Theme.of(context).brightness == Brightness.dark;
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: colors.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
                             color: colors.primary.withValues(
-                              alpha: isDark ? 0.28 : 0.22,
+                              alpha: isDark ? 0.35 : 0.25,
                             ),
                           ),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(18),
+                          padding: const EdgeInsets.all(14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -739,18 +740,35 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                         Text(
                                           item.name,
                                           style: const TextStyle(
-                                            fontSize: 16.5,
-                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15.5,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
                                         if (item.category.isNotEmpty) ...[
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            item.category,
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w700,
-                                              color: colors.primary,
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: colors.primary.withValues(
+                                                alpha: 0.14,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: colors.primary
+                                                    .withValues(alpha: 0.4),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              item.category,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: colors.primary,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -766,7 +784,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                             ? '${fmtBs(priceBs)} Bs'
                                             : 'Sin tasa',
                                         style: TextStyle(
-                                          fontSize: 22,
+                                          fontSize: 20,
                                           fontWeight: FontWeight.w800,
                                           fontFeatures: const [
                                             FontFeature.tabularFigures(),
@@ -774,11 +792,28 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                           color: colors.primary,
                                         ),
                                       ),
-                                      Text(
-                                        '${source.label} (${rate > 0 ? fmtRate(rate) : "—"})',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: colors.textSecondary,
+                                      const SizedBox(height: 2),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: colors.surfaceElevated,
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: colors.borderSubtle,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${source.label} (${rate > 0 ? fmtRate(rate) : "—"})',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: colors.textSecondary,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -786,16 +821,31 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              Text(
-                                'Costo: \$${fmtUsd(item.costUsd)} · Margen: ${item.marginPercent.toStringAsFixed(1)}% (${item.marginMode.shortLabel}) · '
-                                'Comisiones: ${totalCommPct.toStringAsFixed(1)}%'
-                                '${bd != null && rate > 0 ? ' · Ganancia: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / rate)})' : ''}',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: colors.textSecondary,
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceElevated,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: colors.borderSubtle,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Costo: \$${fmtUsd(item.costUsd)} · Margen: ${item.marginPercent.toStringAsFixed(1)}% (${item.marginMode.shortLabel}) · '
+                                  'Comisiones: ${totalCommPct.toStringAsFixed(1)}%'
+                                  '${bd != null && rate > 0 ? ' · Ganancia: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / rate)})' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: colors.textSecondary,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 10),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
@@ -810,15 +860,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                       ),
                                       style: FilledButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 18,
-                                          vertical: 10,
+                                          horizontal: 14,
+                                          vertical: 8,
                                         ),
+                                        minimumSize: const Size(0, 34),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
                                         textStyle: const TextStyle(
-                                          fontSize: 13.5,
+                                          fontSize: 12.5,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                      icon: const Icon(Icons.copy, size: 16),
+                                      icon: const Icon(Icons.copy, size: 15),
                                       label: const Text('Copiar Bs'),
                                     ),
                                     OutlinedButton.icon(
@@ -835,13 +888,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                           ),
                                         ),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 10,
+                                          horizontal: 12,
+                                          vertical: 8,
                                         ),
+                                        minimumSize: const Size(0, 34),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
                                       ),
                                       icon: Icon(
                                         Icons.send_outlined,
-                                        size: 16,
+                                        size: 15,
                                         color: colors.primary,
                                       ),
                                       label: const Text('WhatsApp'),
@@ -850,7 +906,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                   IconButton(
                                     icon: Icon(
                                       Icons.edit_outlined,
-                                      size: 20,
+                                      size: 19,
                                       color: colors.textSecondary,
                                     ),
                                     tooltip: 'Editar producto',
@@ -860,7 +916,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                   IconButton(
                                     icon: Icon(
                                       Icons.delete_outline,
-                                      size: 20,
+                                      size: 19,
                                       color: colors.textSecondary,
                                     ),
                                     tooltip: 'Eliminar producto',

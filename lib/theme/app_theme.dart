@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Tokens de color del sistema de diseño de MargenCalcu para modo oscuro y claro.
+/// Tokens de color del sistema de diseño de MargenCalcu (estilo ArbiCalc en capas + verde de marca).
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
@@ -41,18 +41,18 @@ class AppColors extends ThemeExtension<AppColors> {
 
   static const AppColors dark = AppColors(
     background: Color(0xFF080C10),
-    surface: Color(0xFF161E27),
-    surfaceElevated: Color(0xFF1E2937),
-    borderSubtle: Color(0x1CFFFFFF), // blanco al 11%
-    borderStrong: Color(0x30FFFFFF), // blanco al 19%
+    surface: Color(0xFF111821),
+    surfaceElevated: Color(0xFF18222F),
+    borderSubtle: Color(0xFF243244),
+    borderStrong: Color(0xFF33465E),
     primary: Color(0xFF22C55E),
     primaryDark: Color(0xFF16A34A),
     heroGradientStart: Color(0xFF16A34A),
     heroGradientEnd: Color(0xFF15803D),
     heroBorder: Color(0xCC4ADE80),
-    textPrimary: Color(0xFFF1F5F9),
-    textSecondary: Color(0xFFA3B3C6),
-    textMuted: Color(0xFF718399),
+    textPrimary: Color(0xFFF8FAFC),
+    textSecondary: Color(0xFFCBD5E1),
+    textMuted: Color(0xFF94A3B8),
     amber: Color(0xFFF59E0B),
     blue: Color(0xFF3B82F6),
     danger: Color(0xFFEF4444),
@@ -172,25 +172,25 @@ class AppTypography {
 
   static TextStyle sectionTitle(BuildContext context) {
     return TextStyle(
-      fontSize: 17,
+      fontSize: 16,
       fontWeight: FontWeight.w800,
-      letterSpacing: -0.4,
+      letterSpacing: -0.3,
       color: context.appColors.textPrimary,
     );
   }
 
   static TextStyle overlineLabel(BuildContext context) {
     return TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.8,
+      fontSize: 11,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.7,
       color: context.appColors.textSecondary,
     );
   }
 
   static TextStyle rateValue(BuildContext context) {
     return TextStyle(
-      fontSize: 21,
+      fontSize: 20,
       fontWeight: FontWeight.w800,
       color: context.appColors.textPrimary,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -241,6 +241,8 @@ class AppTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colors.background,
+      canvasColor: colors.surface,
+      dividerColor: colors.borderSubtle,
       extensions: [colors],
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -249,11 +251,11 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        toolbarHeight: 72,
+        toolbarHeight: 54,
         titleTextStyle: TextStyle(
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: FontWeight.w800,
-          letterSpacing: -0.5,
+          letterSpacing: -0.3,
           color: colors.textPrimary,
         ),
         iconTheme: IconThemeData(color: colors.textSecondary),
@@ -263,7 +265,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: colors.borderSubtle),
         ),
       ),
@@ -271,43 +273,48 @@ class AppTheme {
         filled: true,
         fillColor: colors.surfaceElevated,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 16,
+          horizontal: 12,
+          vertical: 11,
         ),
         labelStyle: TextStyle(
-          color: colors.textSecondary,
-          fontSize: 13,
+          color: colors.textMuted,
+          fontSize: 12.5,
           fontWeight: FontWeight.w600,
         ),
-        hintStyle: TextStyle(color: colors.textMuted, fontSize: 14),
-        prefixStyle: TextStyle(
-          color: colors.textSecondary,
+        floatingLabelStyle: TextStyle(
+          color: colors.primary,
+          fontSize: 11.5,
           fontWeight: FontWeight.w700,
-          fontSize: 15,
         ),
-        suffixStyle: TextStyle(
+        hintStyle: TextStyle(color: colors.textMuted, fontSize: 13),
+        prefixStyle: TextStyle(
           color: colors.textSecondary,
           fontWeight: FontWeight.w700,
           fontSize: 14,
         ),
+        suffixStyle: TextStyle(
+          color: colors.textSecondary,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: colors.borderStrong),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colors.borderSubtle),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: colors.borderStrong),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colors.borderSubtle),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: colors.primary, width: 2.0),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colors.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colors.danger, width: 1.4),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colors.danger, width: 1.8),
         ),
       ),
@@ -315,78 +322,83 @@ class AppTheme {
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        height: 68,
+        height: 60,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         indicatorColor: const Color(0xFF22C55E),
         indicatorShape: const StadiumBorder(),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? const Color(0xFF04140A) : colors.textSecondary,
-            size: selected ? 24 : 23,
+            color: selected ? const Color(0xFF04140A) : colors.textMuted,
+            size: 22,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: selected ? 12 : 11.5,
+            fontSize: 11,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? colors.primary : colors.textSecondary,
+            color: selected ? colors.primary : colors.textMuted,
           );
         }),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: colors.surface,
-        selectedColor: const Color(0xFF22C55E),
+        backgroundColor: colors.surfaceElevated,
+        selectedColor: colors.primary.withValues(alpha: 0.22),
         side: WidgetStateBorderSide.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return BorderSide(
-            color: selected ? const Color(0xFF22C55E) : colors.borderStrong,
+            color: selected ? colors.primary : colors.borderSubtle,
+            width: selected ? 1.4 : 1.0,
           );
         }),
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         labelStyle: WidgetStateTextStyle.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: 12.5,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-            color: selected ? const Color(0xFF04140A) : colors.textPrimary,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            color: selected ? colors.primary : colors.textSecondary,
           );
         }),
-        secondaryLabelStyle: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF04140A),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: colors.primary,
         ),
-        checkmarkColor: const Color(0xFF04140A),
+        checkmarkColor: colors.primary,
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFF22C55E);
+              return colors.primary;
             }
             return colors.surfaceElevated;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFF04140A);
+              return isDark ? const Color(0xFF04140A) : Colors.white;
             }
             return colors.textSecondary;
           }),
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const BorderSide(color: Color(0xFF22C55E));
+              return BorderSide(color: colors.primary);
             }
-            return BorderSide(color: colors.borderStrong);
+            return BorderSide(color: colors.borderSubtle);
           }),
           padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           ),
-          shape: const WidgetStatePropertyAll(StadiumBorder()),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
           textStyle: const WidgetStatePropertyAll(
-            TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
         ),
       ),
@@ -397,31 +409,37 @@ class AppTheme {
           disabledBackgroundColor: colors.surfaceElevated,
           disabledForegroundColor: colors.textMuted,
           elevation: 0,
-          shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.textPrimary,
           side: BorderSide(color: colors.borderStrong, width: 1.2),
-          shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           textStyle: const TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 13.5,
+            fontSize: 13,
           ),
         ),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: Color(0xFF22C55E),
-        foregroundColor: Color(0xFF04140A),
-        shape: StadiumBorder(),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: const Color(0xFF22C55E),
+        foregroundColor: const Color(0xFF04140A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         elevation: 4,
-        extendedTextStyle: TextStyle(
+        extendedTextStyle: const TextStyle(
           fontWeight: FontWeight.w800,
-          fontSize: 14,
+          fontSize: 13.5,
           letterSpacing: 0.1,
         ),
       ),
@@ -432,11 +450,11 @@ class AppTheme {
         dividerColor: colors.borderSubtle,
         labelStyle: const TextStyle(
           fontWeight: FontWeight.w800,
-          fontSize: 13.5,
+          fontSize: 13,
         ),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
-          fontSize: 13.5,
+          fontSize: 13,
         ),
       ),
       dividerTheme: DividerThemeData(color: colors.borderSubtle, thickness: 1),
@@ -444,14 +462,14 @@ class AppTheme {
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: colors.borderSubtle),
         ),
       ),
@@ -461,7 +479,7 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: colors.borderSubtle),
+          side: BorderSide(color: colors.borderStrong),
         ),
       ),
     );

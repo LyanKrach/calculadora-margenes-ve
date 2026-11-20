@@ -65,13 +65,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         children: [
           Text(
             'Suscripción y Planes Pro',
             style: AppTypography.sectionTitle(context),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Container(
             decoration: _subState.isPro
                 ? BoxDecoration(
@@ -79,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       colors.primary.withValues(alpha: 0.08),
                       colors.surface,
                     ),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: colors.primary.withValues(alpha: 0.65),
                       width: 1.5,
@@ -87,7 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     boxShadow: [
                       BoxShadow(
                         color: colors.primary.withValues(alpha: 0.16),
-                        blurRadius: 18,
+                        blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
                     ],
@@ -97,7 +97,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: _subState.isPro ? Colors.transparent : null,
               shape: _subState.isPro
                   ? const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(20)),
+                      borderRadius: BorderRadius.all(Radius.circular(14)),
                     )
                   : null,
               child: ListTile(
@@ -316,13 +316,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const Text(
                           'Calculadora de Márgenes VE',
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w800,
                             fontSize: 15,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Versión 1.0.0+1\n'
+                          'Versión 1.1.0+3\n'
                           'Para comerciantes en Venezuela: precios en bolívares calculados al instante con tasas BCV, Binance P2P y Euro oficial.\n\n'
                           'Soporta cálculo Sobre Costo (Markup directo) y Sobre Venta (Margen financiero limpio).',
                           style: TextStyle(

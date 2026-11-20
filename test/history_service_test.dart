@@ -201,7 +201,7 @@ void main() {
       // Verificar que la tarjeta de tasa seleccionada es Binance USDT (con check_circle)
       final binanceTile = find.ancestor(
         of: find.text(RateSource.binanceUsdt.label),
-        matching: find.byType(ListTile),
+        matching: find.byType(GestureDetector),
       );
       expect(
         find.descendant(of: binanceTile, matching: find.byIcon(Icons.check_circle)),

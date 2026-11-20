@@ -18,10 +18,13 @@ import '../utils/format.dart';
 import '../widgets/category_picker_field.dart';
 import '../widgets/history_presets_sheet.dart';
 import 'auth_screen.dart';
+import 'result_screen.dart';
 
-/// Pantalla principal: costo, tasa (4 tarjetas), margen, comisiones,
-/// gasto fijo → precio de venta con desglose paso a paso, calculadora
-/// inversa y tabla comparativa 10 %-40 %.
+/// Pantalla principal estilo ArbiCalc (sin scroll vertical):
+/// - Carrusel horizontal de tasas (BCV $, Binance USDT, Euro BCV, Personalizada)
+/// - Modo de margen (Sobre costo / Sobre venta) + fila compacta Costo, Margen y Gasto fijo
+/// - Comisiones como chips + 3 campos (Plataforma, Pago Móvil, Otra) + Redondeo como chips
+/// - Botón verde fijo "Calcular precio" abajo que abre [ResultScreen].
 class CalculatorScreen extends StatefulWidget {
   const CalculatorScreen({super.key});
 
@@ -51,7 +54,28 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   RateSource _selectedSource = RateSource.bcvUsd;
   MarginMode _marginMode = MarginMode.onCost;
-  Map<RateSource, Rate> _ratesMap = {};
+  Map<RateSource, Rate> _ratesMap = {
+    RateSource.bcvUsd: Rate(
+      source: RateSource.bcvUsd,
+      value: RatesService.fallbackBcvUsd,
+      fetchedAt: DateTime.now(),
+      isCached: true,
+      effectiveDate: '2026-11-10',
+    ),
+    RateSource.binanceUsdt: Rate(
+      source: RateSource.binanceUsdt,
+      value: RatesService.fallbackBinanceUsdt,
+      fetchedAt: DateTime.now(),
+      isCached: true,
+    ),
+    RateSource.euroBcv: Rate(
+      source: RateSource.euroBcv,
+      value: RatesService.fallbackEuroBcv,
+      fetchedAt: DateTime.now(),
+      isCached: true,
+      effectiveDate: '2026-11-10',
+    ),
+  };
   bool _loadingRates = true;
   String? _ratesError;
   int _roundStep = 10;
@@ -221,34 +245,40 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
-  Future<void> _copyPrice(double roundedPriceBs) async {
+  Future<void> _copyPrice(BuildContext activeCtx, double roundedPriceBs) async {
     await _recordCurrentToHistory(roundedPriceBs);
     await Clipboard.setData(ClipboardData(text: '${fmtBs(roundedPriceBs)} Bs'));
-    if (!mounted) return;
+    if (!activeCtx.mounted) return;
     ScaffoldMessenger.of(
-      context,
+      activeCtx,
     ).showSnackBar(const SnackBar(content: Text('Precio copiado')));
   }
 
-  Future<void> _copyClientMessage(double roundedPriceBs) async {
+  Future<void> _copyClientMessage(
+    BuildContext activeCtx,
+    double roundedPriceBs,
+  ) async {
     await _recordCurrentToHistory(roundedPriceBs);
     final msg = await _buildClientMessage(roundedPriceBs);
     await Clipboard.setData(ClipboardData(text: msg));
-    if (!mounted) return;
+    if (!activeCtx.mounted) return;
     ScaffoldMessenger.of(
-      context,
+      activeCtx,
     ).showSnackBar(const SnackBar(content: Text('Mensaje copiado')));
   }
 
-  Future<void> _shareWhatsApp(double roundedPriceBs) async {
+  Future<void> _shareWhatsApp(
+    BuildContext activeCtx,
+    double roundedPriceBs,
+  ) async {
     await _recordCurrentToHistory(roundedPriceBs);
     final msg = await _buildClientMessage(roundedPriceBs);
     final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
+    if (!launched && activeCtx.mounted) {
       await Clipboard.setData(ClipboardData(text: msg));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!activeCtx.mounted) return;
+      ScaffoldMessenger.of(activeCtx).showSnackBar(
         const SnackBar(
           content: Text(
             'No se pudo abrir WhatsApp; mensaje copiado al portapapeles',
@@ -258,10 +288,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     }
   }
 
-  Future<void> _promptSavePreset(double roundedPriceBs) async {
+  Future<void> _promptSavePreset(
+    BuildContext activeCtx,
+    double roundedPriceBs,
+  ) async {
     if (AuthService.isFirebaseInitialized && !_authService.isSignedIn) {
       final shouldLogin = await showDialog<bool>(
-        context: context,
+        context: activeCtx,
         builder: (ctx) => AlertDialog(
           title: const Row(
             children: [
@@ -286,22 +319,22 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           ],
         ),
       );
-      if (shouldLogin == true && mounted) {
+      if (shouldLogin == true && activeCtx.mounted) {
         await Navigator.of(
-          context,
+          activeCtx,
         ).push(MaterialPageRoute(builder: (_) => const AuthScreen()));
-        if (!mounted || !_authService.isSignedIn) return;
+        if (!activeCtx.mounted || !_authService.isSignedIn) return;
       } else {
         return;
       }
     }
 
-    if (!mounted) return;
+    if (!activeCtx.mounted) return;
 
     final existingProducts = await _productsService.getProducts(
       syncRemote: false,
     );
-    if (!mounted) return;
+    if (!activeCtx.mounted) return;
     final existingCategories = extractUniqueCategories(existingProducts);
 
     final nameCtrl = TextEditingController(
@@ -311,7 +344,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     var selectedCategory = '';
 
     final result = await showDialog<({String name, String category})>(
-      context: context,
+      context: activeCtx,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Guardar como plantilla'),
@@ -408,8 +441,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       await _historyService.savePreset(preset);
       await _productsService.saveProduct(product);
       await _recordCurrentToHistory(roundedPriceBs);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!activeCtx.mounted) return;
+      ScaffoldMessenger.of(activeCtx).showSnackBar(
         SnackBar(
           content: Text(
             'Producto "$confirmed" guardado en tu cuenta y catálogo',
@@ -417,8 +450,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!activeCtx.mounted) return;
+      ScaffoldMessenger.of(activeCtx).showSnackBar(
         SnackBar(
           backgroundColor: Colors.red.shade800,
           content: Text('Error al guardar en la nube: $e'),
@@ -507,8 +540,83 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
+  void _onCalculatePressed({
+    required bool valid,
+    required double? exact,
+    required double? rounded,
+    required Breakdown? bd,
+  }) {
+    FocusScope.of(context).unfocus();
+    if (!valid || exact == null || rounded == null || bd == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Revisa los datos: el costo y la tasa deben ser mayores que 0, '
+            'y las comisiones deben ser menores al 100 %.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ResultScreen(
+          costUsd: _costUsd,
+          rate: _rate,
+          rateSource: _selectedSource,
+          margin: _margin,
+          marginMode: _marginMode,
+          commissionProvider: _prov,
+          commissionGateway: _gateway,
+          commissionOther: _other,
+          fixedExpenseBs: _fixed,
+          roundStep: _roundStep,
+          exactPriceBs: exact,
+          roundedPriceBs: rounded,
+          breakdown: bd,
+          inversePriceController: _inversePriceCtrl,
+          onCopyPrice: _copyPrice,
+          onCopyClientMessage: _copyClientMessage,
+          onShareWhatsApp: _shareWhatsApp,
+          onSavePreset: _promptSavePreset,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _compactDecoration({
+    required String labelText,
+    String? prefixText,
+    String? suffixText,
+    String? hintText,
+    required bool ultraTight,
+    required bool tight,
+  }) {
+    final colors = context.appColors;
+    final vPad = ultraTight ? 4.0 : (tight ? 7.0 : 9.0);
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      prefixText: prefixText,
+      suffixText: suffixText,
+      isDense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 9, vertical: vPad),
+      labelStyle: TextStyle(
+        color: colors.textMuted,
+        fontSize: ultraTight ? 10.5 : 11.5,
+      ),
+      floatingLabelStyle: TextStyle(
+        color: colors.primary,
+        fontSize: ultraTight ? 10.0 : 11.0,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final totalComm = _prov + _gateway + _other;
     bool valid =
         _costUsd > 0 &&
@@ -553,22 +661,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       }
     }
 
-    final inversePrice = double.tryParse(
-      _inversePriceCtrl.text.replaceAll(',', '.'),
-    );
-    final inverseMargin = (valid && inversePrice != null && inversePrice > 0)
-        ? MarginCalculator.realMargin(
-            costUsd: _costUsd,
-            rate: _rate,
-            totalCommission: _totalCommission,
-            fixedExpenseBs: _fixed,
-            currentPriceBs: inversePrice,
-            marginMode: _marginMode,
-          )
-        : null;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: FittedBox(
           fit: BoxFit.scaleDown,
@@ -580,11 +675,11 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 width: 9,
                 height: 9,
                 decoration: BoxDecoration(
-                  color: context.appColors.primary,
+                  color: colors.primary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: context.appColors.primary.withValues(alpha: 0.6),
+                      color: colors.primary.withValues(alpha: 0.6),
                       blurRadius: 9,
                     ),
                   ],
@@ -598,883 +693,715 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         actions: [
           IconButton(
             style: IconButton.styleFrom(
-              backgroundColor: context.appColors.surface,
-              foregroundColor: context.appColors.textPrimary,
-              side: BorderSide(color: context.appColors.borderSubtle),
+              backgroundColor: colors.surface,
+              foregroundColor: colors.textPrimary,
+              side: BorderSide(color: colors.borderSubtle),
               shape: const CircleBorder(),
-              minimumSize: const Size(40, 40),
+              minimumSize: const Size(38, 38),
               padding: EdgeInsets.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: const Icon(Icons.bookmarks_outlined),
+            icon: const Icon(Icons.bookmarks_outlined, size: 19),
             tooltip: 'Historial y plantillas',
             onPressed: _openHistoryPresetsSheet,
           ),
           const SizedBox(width: 4),
           IconButton(
             style: IconButton.styleFrom(
-              backgroundColor: context.appColors.surface,
-              foregroundColor: context.appColors.textPrimary,
-              side: BorderSide(color: context.appColors.borderSubtle),
+              backgroundColor: colors.surface,
+              foregroundColor: colors.textPrimary,
+              side: BorderSide(color: colors.borderSubtle),
               shape: const CircleBorder(),
-              minimumSize: const Size(40, 40),
+              minimumSize: const Size(38, 38),
               padding: EdgeInsets.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 19),
             tooltip: 'Actualizar tasas',
             onPressed: _loadRates,
           ),
           const SizedBox(width: 4),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          // --- 4 tarjetas de tasa ---
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: context.appColors.primary,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Tasa del día',
-                style: AppTypography.sectionTitle(
-                  context,
-                ).copyWith(color: context.appColors.primary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_loadingRates)
-            const LinearProgressIndicator()
-          else
-            ...RateSource.values.map((s) => _rateCard(s)),
-          if (_ratesError != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _ratesError!,
-                style: TextStyle(color: context.appColors.amber, fontSize: 13),
-              ),
-            ),
-          if (_selectedSource == RateSource.custom)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: TextField(
-                controller: _customRateCtrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Tasa personalizada (Bs/\$)',
-                  hintText: 'Ej. 950,00',
-                  suffixText: 'Bs/\$',
-                ),
-                onChanged: (_) async {
-                  final v = double.tryParse(
-                    _customRateCtrl.text.replaceAll(',', '.'),
-                  );
-                  if (v != null && v > 0) await _rates.setCustomRate(v);
-                },
-              ),
-            ),
-          const SizedBox(height: 20),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final h = constraints.maxHeight;
+          final extraRows =
+              (_selectedSource == RateSource.custom ? 1 : 0) +
+              (_ratesError != null ? 1 : 0);
 
-          // --- Modo de Cálculo: Sobre costo vs Sobre venta ---
-          Row(
-            children: [
-              Text(
-                'Modo de margen',
-                style: AppTypography.sectionTitle(context),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.help_outline, size: 20),
-                tooltip: '¿Cómo se calcula el precio y la tasa?',
-                onPressed: _showMarginModeExplanation,
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          SegmentedButton<MarginMode>(
-            segments: const [
-              ButtonSegment(
-                value: MarginMode.onCost,
-                icon: Icon(Icons.trending_up, size: 16),
-                label: Text('Sobre costo'),
-              ),
-              ButtonSegment(
-                value: MarginMode.onSale,
-                icon: Icon(Icons.pie_chart_outline, size: 16),
-                label: Text('Sobre venta'),
-              ),
-            ],
-            selected: {_marginMode},
-            onSelectionChanged: (s) => setState(() => _marginMode = s.first),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _marginMode == MarginMode.onCost
-                ? 'Markup directo: Precio = Costo × (1 + Margen) ÷ (1 − Comisiones)'
-                : 'Margen comercial: Precio = Costo ÷ (1 − Comisiones − Margen)',
-            style: TextStyle(fontSize: 11, color: context.appColors.textMuted),
-          ),
-          const SizedBox(height: 20),
+          final tight = h < (560 + extraRows * 34);
+          final ultraTight = h < (470 + extraRows * 30);
 
-          // --- Inputs ---
-          _numField(_costCtrl, 'Costo del producto (\$)', prefixText: '\$ '),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _numField(
-                  _marginCtrl,
-                  _marginMode == MarginMode.onCost
-                      ? 'Margen s/costo (%)'
-                      : 'Margen s/venta (%)',
-                  suffixText: '%',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _numField(
-                  _fixedCtrl,
-                  'Gasto fijo (Bs)',
-                  suffixText: 'Bs',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text('Comisiones (%)', style: AppTypography.sectionTitle(context)),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+          final outerVPad = ultraTight ? 4.0 : (tight ? 6.0 : 10.0);
+          final gap = ultraTight ? 4.0 : (tight ? 6.0 : 10.0);
+          final cardPad = ultraTight ? 6.0 : (tight ? 8.5 : 11.0);
+          final fieldGap = ultraTight ? 4.0 : (tight ? 6.0 : 8.5);
+          final rateCarouselHeight = ultraTight ? 46.0 : (tight ? 52.0 : 58.0);
+          final ctaHeight = ultraTight ? 38.0 : (tight ? 43.0 : 48.0);
+          final inputHeight = ultraTight ? 32.0 : (tight ? 36.0 : 41.0);
+
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: outerVPad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _commissionChip(
-                  label: '0.3% Pago Móvil',
-                  ctrl: _gatewayCtrl,
-                  targetValue: 0.3,
-                ),
-                const SizedBox(width: 8),
-                _commissionChip(
-                  label: '3.0% Pasarela',
-                  ctrl: _gatewayCtrl,
-                  targetValue: 3.0,
-                ),
-                const SizedBox(width: 8),
-                _commissionChip(
-                  label: '1.5% Binance P2P',
-                  ctrl: _provCtrl,
-                  targetValue: 1.5,
-                ),
-                const SizedBox(width: 8),
-                _commissionChip(
-                  label: '2.0% Operativa',
-                  ctrl: _provCtrl,
-                  targetValue: 2.0,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _numField(
-                  _provCtrl,
-                  'Plataforma / Prov.',
-                  suffixText: '%',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _numField(
-                  _gatewayCtrl,
-                  'Pago Móvil / Pasarela',
-                  suffixText: '%',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: _numField(_otherCtrl, 'Otra', suffixText: '%')),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('Exacto')),
-              ButtonSegment(value: 10, label: Text('Bs 10')),
-              ButtonSegment(value: 50, label: Text('Bs 50')),
-              ButtonSegment(value: 100, label: Text('Bs 100')),
-            ],
-            selected: {_roundStep},
-            onSelectionChanged: (s) => setState(() => _roundStep = s.first),
-          ),
-          const SizedBox(height: 20),
-
-          // --- Resultado + desglose paso a paso ---
-          if (!valid)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  'Revisa los datos: el costo y la tasa deben ser mayores que 0, '
-                  'y las comisiones deben ser menores al 100 %.',
-                ),
-              ),
-            )
-          else if (bd != null && rounded != null && exact != null) ...[
-            _buildHeroPriceCard(
-              context: context,
-              rounded: rounded,
-              exact: exact,
-              bd: bd,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Desglose paso a paso',
-              style: AppTypography.sectionTitle(context),
-            ),
-            const SizedBox(height: 10),
-            _buildTimelineBreakdown(
-              context: context,
-              bd: bd,
-              exact: exact,
-              rounded: rounded,
-            ),
-            const SizedBox(height: 20),
-
-            // --- Tabla comparativa 10 %-40 % ---
-            Text(
-              'Tabla comparativa por margen (${_marginMode.shortLabel})',
-              style: AppTypography.sectionTitle(context),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: Column(
-                children:
-                    MarginCalculator.comparisonTable(
-                      costUsd: _costUsd,
-                      rate: _rate,
-                      totalCommission: _totalCommission,
-                      fixedExpenseBs: _fixed,
-                      roundStep: _roundStep,
-                      marginMode: _marginMode,
-                    ).map((row) {
-                      final isCurrent = row.margin == _margin;
-                      return Container(
-                        decoration: isCurrent
-                            ? BoxDecoration(
-                                color: context.appColors.primary.withValues(
-                                  alpha: 0.08,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              )
-                            : null,
-                        child: ListTile(
-                          dense: true,
-                          title: Text(
-                            '${(row.margin * 100).toStringAsFixed(0)} %',
-                            style: TextStyle(
-                              fontWeight: isCurrent
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          trailing: Text(
-                            '${fmtBs(row.roundedPriceBs)} Bs',
-                            style: TextStyle(
-                              fontWeight: isCurrent
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                              color: isCurrent
-                                  ? context.appColors.primary
-                                  : context.appColors.textPrimary,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'Ganancia neta ${fmtBs(row.netProfitBs)} Bs',
-                            style: TextStyle(
-                              color: context.appColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // --- Calculadora inversa ---
-            Text(
-              'Calculadora inversa',
-              style: AppTypography.sectionTitle(context),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _inversePriceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Precio actual que cobras (Bs)',
-                hintText: 'Ej. 12000',
-                suffixText: 'Bs',
-              ),
-            ),
-            if (inverseMargin != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  inverseMargin < 0
-                      ? 'Margen real: ${(inverseMargin * 100).toStringAsFixed(1)} % — ¡PIERDES DINERO con ese precio!'
-                      : 'Margen real con ese precio: ${(inverseMargin * 100).toStringAsFixed(1)} %',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: inverseMargin < 0
-                        ? context.appColors.danger
-                        : context.appColors.primary,
-                  ),
-                ),
-              ),
-          ],
-          const SizedBox(height: 24),
-          Text(
-            'Fórmula: Precio = (Costo en Bs + Gasto fijo) ÷ (1 − comisiones − margen). '
-            'El margen es sobre el precio de venta, no sobre el costo.',
-            style: TextStyle(fontSize: 12, color: context.appColors.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeroPriceCard({
-    required BuildContext context,
-    required double rounded,
-    required double exact,
-    required Breakdown bd,
-  }) {
-    final colors = context.appColors;
-    final heroButtonStyle = OutlinedButton.styleFrom(
-      backgroundColor: const Color(0xFF052E16).withValues(alpha: 0.45),
-      foregroundColor: Colors.white,
-      side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
-    );
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [colors.heroGradientStart, colors.heroGradientEnd],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colors.heroBorder, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF22C55E).withValues(alpha: 0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(23),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -70,
-              right: -50,
-              child: Container(
-                width: 190,
-                height: 190,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.10),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -90,
-              left: -60,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.black.withValues(alpha: 0.10),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'PRECIO DE VENTA',
-                        style: AppTypography.overlineLabel(
-                          context,
-                        ).copyWith(color: Colors.white.withValues(alpha: 0.92)),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.30),
-                          ),
-                        ),
-                        child: Text(
-                          _marginMode.shortLabel,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: ScaleTransition(
-                        scale: Tween<double>(
-                          begin: 0.96,
-                          end: 1.0,
-                        ).animate(anim),
-                        child: child,
-                      ),
-                    ),
-                    child: FittedBox(
-                      key: ValueKey(rounded),
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '${fmtBs(rounded)} Bs',
-                        style: AppTypography.heroPrice(
-                          context,
-                        ).copyWith(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _roundStep == 0
-                        ? 'Precio exacto · sin redondeo (≈ \$${fmtUsd(rounded / _rate)} USD)'
-                        : 'Precio exacto: ${fmtBs(exact)} Bs · redondeado a Bs $_roundStep (≈ \$${fmtUsd(rounded / _rate)} USD)',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.white.withValues(alpha: 0.90),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                if (_ratesError != null) ...[
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: ultraTight ? 2 : 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(999),
+                      color: colors.amber.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(9),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.28),
+                        color: colors.amber.withValues(alpha: 0.5),
                       ),
                     ),
-                    child: Text(
-                      _marginMode == MarginMode.onCost
-                          ? 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                                'margen s/costo: ${(bd.realMarginOnCost * 100).toStringAsFixed(1)} % (s/venta: ${(bd.realMargin * 100).toStringAsFixed(1)} %)'
-                          : 'Ganancia neta: ${fmtBs(bd.netProfitBs)} Bs (≈ \$${fmtUsd(bd.netProfitBs / _rate)}) · '
-                                'margen real: ${(bd.realMargin * 100).toStringAsFixed(1)} %',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () => _copyPrice(rounded),
-                        style: FilledButton.styleFrom(
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.35),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: colors.amber,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _ratesError!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.amber,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        icon: const Icon(Icons.copy, size: 17),
-                        label: const Text('Copiar precio'),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: gap),
+                ],
+
+                // 1. Selector de tasa como CARRUSEL HORIZONTAL de tarjetas compactas
+                Container(
+                  padding: EdgeInsets.all(cardPad),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colors.borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 3.5,
+                            height: 13,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Tasa del día',
+                            style: TextStyle(
+                              fontSize: ultraTight ? 11.5 : 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: colors.primary,
+                            ),
+                          ),
+                          if (_loadingRates) ...[
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 11,
+                              height: 11,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.8,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          Text(
+                            _rate > 0
+                                ? '${_selectedSource.label} · ${fmtRate(_rate)} ${_selectedSource.unit}'
+                                : _selectedSource.label,
+                            style: TextStyle(
+                              fontSize: ultraTight ? 10.5 : 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                      OutlinedButton.icon(
-                        onPressed: () => _copyClientMessage(rounded),
-                        style: heroButtonStyle,
-                        icon: const Icon(Icons.message_outlined, size: 17),
-                        label: const Text('Mensaje cliente'),
+                      SizedBox(height: ultraTight ? 4 : 6),
+                      SizedBox(
+                        height: rateCarouselHeight,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: RateSource.values.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 6),
+                          itemBuilder: (ctx, idx) => _rateCarouselCard(
+                            RateSource.values[idx],
+                            ultraTight: ultraTight,
+                          ),
+                        ),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: () => _shareWhatsApp(rounded),
-                        style: heroButtonStyle,
-                        icon: const Icon(Icons.send_outlined, size: 17),
-                        label: const Text('WhatsApp'),
+                      if (_selectedSource == RateSource.custom) ...[
+                        SizedBox(height: fieldGap),
+                        SizedBox(
+                          height: inputHeight,
+                          child: TextField(
+                            controller: _customRateCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: TextStyle(
+                              fontSize: ultraTight ? 12.5 : 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            decoration: _compactDecoration(
+                              labelText: 'Tasa personalizada (Bs/\$)',
+                              hintText: 'Ej. 950,00',
+                              suffixText: 'Bs/\$',
+                              ultraTight: ultraTight,
+                              tight: tight,
+                            ),
+                            onChanged: (_) async {
+                              final v = double.tryParse(
+                                _customRateCtrl.text.replaceAll(',', '.'),
+                              );
+                              if (v != null && v > 0) {
+                                await _rates.setCustomRate(v);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: gap),
+
+                // 2. Modo de margen (segmento) + Costo, Margen y Gasto fijo en una fila
+                Container(
+                  padding: EdgeInsets.all(cardPad),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colors.borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Modo de margen',
+                            style: TextStyle(
+                              fontSize: ultraTight ? 11.5 : 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              icon: Icon(
+                                Icons.help_outline,
+                                size: 15,
+                                color: colors.textSecondary,
+                              ),
+                              tooltip: '¿Cómo se calcula el precio y la tasa?',
+                              onPressed: _showMarginModeExplanation,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: SizedBox(
+                              height: ultraTight ? 26 : 30,
+                              child: SegmentedButton<MarginMode>(
+                                showSelectedIcon: false,
+                                style: ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 0,
+                                    ),
+                                  ),
+                                  textStyle: WidgetStatePropertyAll(
+                                    TextStyle(
+                                      fontSize: ultraTight ? 10.5 : 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: MarginMode.onCost,
+                                    label: Text('Sobre costo'),
+                                  ),
+                                  ButtonSegment(
+                                    value: MarginMode.onSale,
+                                    label: Text('Sobre venta'),
+                                  ),
+                                ],
+                                selected: {_marginMode},
+                                onSelectionChanged: (s) =>
+                                    setState(() => _marginMode = s.first),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      OutlinedButton.icon(
-                        onPressed: () => _promptSavePreset(rounded),
-                        style: heroButtonStyle,
-                        icon: const Icon(Icons.bookmark_add_outlined, size: 17),
-                        label: const Text('Guardar como preset'),
+                      SizedBox(height: fieldGap),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 11,
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _costCtrl,
+                                'Costo del producto (\$)',
+                                prefixText: '\$ ',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            flex: 11,
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _marginCtrl,
+                                _marginMode == MarginMode.onCost
+                                    ? 'Margen s/costo (%)'
+                                    : 'Margen s/venta (%)',
+                                suffixText: '%',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            flex: 9,
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _fixedCtrl,
+                                'Gasto fijo (Bs)',
+                                suffixText: 'Bs',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+                ),
 
-  Widget _buildTimelineBreakdown({
-    required BuildContext context,
-    required Breakdown bd,
-    required double exact,
-    required double rounded,
-  }) {
-    final steps = <(String, String, String)>[
-      (
-        '1',
-        '1. Costo en Bs',
-        'Costo × tasa = \$${fmtUsd(_costUsd)} × ${fmtRate(_rate)} = ${fmtBs(bd.costBs)} Bs',
-      ),
-      ('2', '2. Gasto fijo', '${fmtBs(bd.fixedExpenseBs)} Bs'),
-      (
-        '3',
-        '3. Precio exacto (${_marginMode.shortLabel})',
-        _marginMode == MarginMode.onCost
-            ? '(${fmtBs(bd.costBs)} × (1 + ${(_margin * 100).toStringAsFixed(1)} %) + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs'
-            : '(${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)}) ÷ (1 − ${(_totalCommission * 100).toStringAsFixed(1)} % − ${(_margin * 100).toStringAsFixed(1)} %) = ${fmtBs(exact)} Bs',
-      ),
-      (
-        '4',
-        '4. Redondeo',
-        _roundStep == 0
-            ? '${fmtBs(exact)} Bs (Exacto sin redondeo)'
-            : '${fmtBs(exact)} → ${fmtBs(rounded)} Bs (a Bs $_roundStep)',
-      ),
-      (
-        '5',
-        '5. Comisiones (${(_totalCommission * 100).toStringAsFixed(1)} %)',
-        '${fmtBs(bd.commissionBs)} Bs (plataforma ${fmtBs(bd.commissionProviderBs)} · pago móvil/pasarela ${fmtBs(bd.commissionGatewayBs)} · otra ${fmtBs(bd.commissionOtherBs)})',
-      ),
-      (
-        '6',
-        '6. Ganancia',
-        _marginMode == MarginMode.onCost
-            ? '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % del costo) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos'
-            : '${fmtBs(bd.profitBs)} Bs (${(_margin * 100).toStringAsFixed(1)} % de venta) + ${fmtBs(bd.roundingExtraBs)} Bs por redondeo = ${fmtBs(bd.netProfitBs)} Bs netos',
-      ),
-      (
-        '✓',
-        'Comprobación',
-        '${fmtBs(bd.costBs)} + ${fmtBs(bd.fixedExpenseBs)} + ${fmtBs(bd.commissionBs)} + ${fmtBs(bd.netProfitBs)} = ${fmtBs(rounded)} Bs ✓',
-      ),
-    ];
+                SizedBox(height: gap),
 
-    final colors = context.appColors;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            for (var i = 0; i < steps.length; i++)
-              _timelineStep(
-                context: context,
-                badge: steps[i].$1,
-                title: steps[i].$2,
-                detail: steps[i].$3,
-                isLast: i == steps.length - 1,
-                isCheck: steps[i].$1 == '✓',
-                colors: colors,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _timelineStep({
-    required BuildContext context,
-    required String badge,
-    required String title,
-    required String detail,
-    required bool isLast,
-    required bool isCheck,
-    required AppColors colors,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 28,
-            child: Column(
-              children: [
+                // 3. Comisiones (chips + 3 campos) y Redondeo (chips)
                 Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
+                  padding: EdgeInsets.all(cardPad),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isCheck
-                        ? colors.primary
-                        : colors.primary.withValues(alpha: 0.14),
-                    border: Border.all(
-                      color: colors.primary.withValues(
-                        alpha: isCheck ? 1 : 0.6,
-                      ),
-                      width: 1.4,
-                    ),
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colors.borderSubtle),
                   ),
-                  child: Text(
-                    badge,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: isCheck
-                          ? (isDark ? const Color(0xFF04140A) : Colors.white)
-                          : colors.primary,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Comisiones (%)',
+                            style: TextStyle(
+                              fontSize: ultraTight ? 11.5 : 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.primary.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: colors.primary.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              'Total ${(_totalCommission * 100).toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: ultraTight ? 3 : 5),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _commissionChip(
+                              label: '0.3% Pago Móvil',
+                              ctrl: _gatewayCtrl,
+                              targetValue: 0.3,
+                              ultraTight: ultraTight,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: _commissionChip(
+                              label: '3.0% Pasarela',
+                              ctrl: _gatewayCtrl,
+                              targetValue: 3.0,
+                              ultraTight: ultraTight,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: _commissionChip(
+                              label: '1.5% Binance P2P',
+                              ctrl: _provCtrl,
+                              targetValue: 1.5,
+                              ultraTight: ultraTight,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: _commissionChip(
+                              label: '2.0% Operativa',
+                              ctrl: _provCtrl,
+                              targetValue: 2.0,
+                              ultraTight: ultraTight,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: fieldGap),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _provCtrl,
+                                'Plataforma / Prov.',
+                                suffixText: '%',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _gatewayCtrl,
+                                'Pago Móvil / Pasarela',
+                                suffixText: '%',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: SizedBox(
+                              height: inputHeight,
+                              child: _numField(
+                                _otherCtrl,
+                                'Otra',
+                                suffixText: '%',
+                                ultraTight: ultraTight,
+                                tight: tight,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: fieldGap),
+                      Row(
+                        children: [
+                          Text(
+                            'Redondeo',
+                            style: TextStyle(
+                              fontSize: ultraTight ? 10.5 : 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SizedBox(
+                              height: ultraTight ? 26 : 30,
+                              child: SegmentedButton<int>(
+                                showSelectedIcon: false,
+                                style: ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 0,
+                                    ),
+                                  ),
+                                  textStyle: WidgetStatePropertyAll(
+                                    TextStyle(
+                                      fontSize: ultraTight ? 10.5 : 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                segments: const [
+                                  ButtonSegment(value: 0, label: Text('Exacto')),
+                                  ButtonSegment(value: 10, label: Text('Bs 10')),
+                                  ButtonSegment(value: 50, label: Text('Bs 50')),
+                                  ButtonSegment(
+                                    value: 100,
+                                    label: Text('Bs 100'),
+                                  ),
+                                ],
+                                selected: {_roundStep},
+                                onSelectionChanged: (s) =>
+                                    setState(() => _roundStep = s.first),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Spacer(),
+
+                SizedBox(height: gap),
+
+                // 4. Botón verde fijo "Calcular precio" abajo
+                SizedBox(
+                  height: ctaHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          colors.primary,
+                          colors.primaryDark,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.primary.withValues(alpha: 0.28),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      key: const Key('calc_submit_button'),
+                      onPressed: () => _onCalculatePressed(
+                        valid: valid,
+                        exact: exact,
+                        rounded: rounded,
+                        bd: bd,
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: const Color(0xFF04140A),
+                        shadowColor: Colors.transparent,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: Icon(
+                        Icons.calculate_rounded,
+                        size: ultraTight ? 17 : 20,
+                        color: const Color(0xFF04140A),
+                      ),
+                      label: Text(
+                        'Calcular precio',
+                        style: TextStyle(
+                          color: const Color(0xFF04140A),
+                          fontSize: ultraTight ? 13.5 : 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: colors.borderStrong,
-                    ),
-                  ),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colors.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  Widget _rateCard(RateSource source) {
+  Widget _rateCarouselCard(RateSource source, {required bool ultraTight}) {
     final rate = _ratesMap[source];
     final selected = _selectedSource == source;
     final colors = context.appColors;
 
-    final String? effDateText =
-        rate != null &&
-            (source == RateSource.bcvUsd || source == RateSource.euroBcv) &&
-            rate.effectiveDate != null &&
-            rate.effectiveDate!.isNotEmpty
-        ? formatEffectiveDate(rate.effectiveDate)
-        : null;
-
     final bool hasTodayBadge =
-        selected &&
         rate != null &&
         (source == RateSource.bcvUsd || source == RateSource.euroBcv);
 
-    final Color cardBg = selected
-        ? Color.alphaBlend(
-            colors.primary.withValues(alpha: 0.12),
-            colors.surface,
-          )
-        : colors.surface;
+    final String subtitleText;
+    if (source == RateSource.custom) {
+      final customVal =
+          double.tryParse(_customRateCtrl.text.replaceAll(',', '.')) ?? 0;
+      subtitleText = customVal > 0
+          ? '${fmtRate(customVal)} Bs/\$'
+          : 'La escribes tú, sin internet';
+    } else if (rate == null) {
+      subtitleText = 'Sin datos';
+    } else {
+      subtitleText = '${fmtRate(rate.value)} ${source.unit}';
+    }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: selected ? colors.primary : colors.borderSubtle,
-          width: selected ? 2 : 1,
+    return GestureDetector(
+      onTap: () => setState(() => _selectedSource = source),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: EdgeInsets.symmetric(
+          horizontal: ultraTight ? 8 : 10,
+          vertical: ultraTight ? 4 : 6,
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: colors.primary.withValues(alpha: 0.30),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: ListTile(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.primary.withValues(alpha: 0.16)
+              : colors.surfaceElevated,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: selected ? colors.primary : colors.borderSubtle,
+            width: selected ? 1.5 : 1,
           ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 10,
-          ),
-          onTap: () => setState(() => _selectedSource = source),
-          leading: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: selected
-                  ? colors.primary.withValues(alpha: 0.16)
-                  : colors.surfaceElevated,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: ultraTight ? 24 : 28,
+              height: ultraTight ? 24 : 28,
+              decoration: BoxDecoration(
                 color: selected
-                    ? colors.primary.withValues(alpha: 0.55)
-                    : colors.borderSubtle,
+                    ? colors.primary.withValues(alpha: 0.20)
+                    : colors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? colors.primary.withValues(alpha: 0.6)
+                      : colors.borderSubtle,
+                ),
+              ),
+              child: Icon(
+                source == RateSource.bcvUsd
+                    ? Icons.account_balance_rounded
+                    : source == RateSource.binanceUsdt
+                    ? Icons.currency_bitcoin
+                    : source == RateSource.euroBcv
+                    ? Icons.euro_rounded
+                    : Icons.tune_rounded,
+                size: ultraTight ? 13 : 15,
+                color: selected ? colors.primary : colors.textSecondary,
               ),
             ),
-            child: Icon(
-              source == RateSource.bcvUsd
-                  ? Icons.account_balance_rounded
-                  : source == RateSource.binanceUsdt
-                  ? Icons.currency_bitcoin
-                  : source == RateSource.euroBcv
-                  ? Icons.euro_rounded
-                  : Icons.tune_rounded,
-              size: 21,
-              color: selected ? colors.primary : colors.textSecondary,
-            ),
-          ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    source.label,
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: colors.textPrimary,
+            const SizedBox(width: 7),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      source.label,
+                      style: TextStyle(
+                        fontSize: ultraTight ? 11 : 12,
+                        fontWeight: FontWeight.w800,
+                        color: selected
+                            ? colors.textPrimary
+                            : colors.textSecondary,
+                      ),
                     ),
-                  ),
-                  if (hasTodayBadge) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.primary.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'Hoy',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: colors.primary,
+                    if (hasTodayBadge) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.primary.withValues(alpha: 0.20),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Hoy',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: colors.primary,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
+                    if (selected) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.check_circle,
+                        color: colors.primary,
+                        size: ultraTight ? 13 : 15,
+                      ),
+                    ],
                   ],
-                ],
-              ),
-              const SizedBox(height: 4),
-              if (source == RateSource.custom)
-                Text(
-                  'La escribes tú, sin internet',
-                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
-                )
-              else if (rate == null)
-                Text(
-                  'Sin datos',
-                  style: TextStyle(fontSize: 13, color: colors.textSecondary),
-                )
-              else ...[
-                Text(
-                  '${fmtRate(rate.value)} ${source.unit}',
-                  style: AppTypography.rateValue(context),
                 ),
-                if (rate.isCached || effDateText != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      if (rate.isCached) 'guardada',
-                      if (effDateText != null) effDateText,
-                    ].join(' · '),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: selected
-                          ? colors.textPrimary.withValues(alpha: 0.85)
-                          : colors.textSecondary,
-                    ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitleText,
+                  style: TextStyle(
+                    fontSize: ultraTight ? 10.5 : 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? colors.primary : colors.textMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                ],
+                ),
               ],
-            ],
-          ),
-          trailing: selected
-              ? Icon(Icons.check_circle, color: colors.primary, size: 28)
-              : null,
+            ),
+          ],
         ),
       ),
     );
@@ -1485,14 +1412,22 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     String label, {
     String? prefixText,
     String? suffixText,
+    required bool ultraTight,
+    required bool tight,
   }) {
     return TextField(
       controller: ctrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
+      style: TextStyle(
+        fontSize: ultraTight ? 12.5 : 13.5,
+        fontWeight: FontWeight.w700,
+      ),
+      decoration: _compactDecoration(
         labelText: label,
         prefixText: prefixText,
         suffixText: suffixText,
+        ultraTight: ultraTight,
+        tight: tight,
       ),
     );
   }
@@ -1501,24 +1436,36 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     required String label,
     required TextEditingController ctrl,
     required double targetValue,
+    required bool ultraTight,
   }) {
     final current = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0;
     final isSelected = (current - targetValue).abs() < 0.0001;
 
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      selected: isSelected,
-      onSelected: (_) {
-        setState(() {
-          if (isSelected) {
-            ctrl.text = '';
-          } else {
-            ctrl.text = targetValue % 1 == 0
-                ? targetValue.toInt().toString()
-                : targetValue.toString();
-          }
-        });
-      },
+    return SizedBox(
+      height: ultraTight ? 25 : 29,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: FilterChip(
+          showCheckmark: false,
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+          label: Text(label, style: const TextStyle(fontSize: 11.5)),
+          selected: isSelected,
+          onSelected: (_) {
+            setState(() {
+              if (isSelected) {
+                ctrl.text = '';
+              } else {
+                ctrl.text = targetValue % 1 == 0
+                    ? targetValue.toInt().toString()
+                    : targetValue.toString();
+              }
+            });
+          },
+        ),
+      ),
     );
   }
 }

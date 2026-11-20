@@ -76,7 +76,7 @@ class _RatesScreenState extends State<RatesScreen> {
           : RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(14),
                 children: [
                   for (final source in [
                     RateSource.bcvUsd,
@@ -84,12 +84,18 @@ class _RatesScreenState extends State<RatesScreen> {
                     RateSource.euroBcv,
                   ])
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 10),
                       child: Card(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(
+                            color: context.appColors.borderSubtle,
+                          ),
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 16,
+                            horizontal: 14,
+                            vertical: 12,
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -101,19 +107,19 @@ class _RatesScreenState extends State<RatesScreen> {
                                     Text(
                                       source.label,
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 15.5,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 3),
                                     Text(
                                       '${_sourceDetail(source)}\n'
                                       '${_rates[source]?.effectiveDate != null && _rates[source]!.effectiveDate!.isNotEmpty ? "${formatEffectiveDate(_rates[source]!.effectiveDate)}\n" : ""}'
                                       'Actualizada: ${_rates[source] == null ? '—' : fmt.format(_rates[source]!.fetchedAt)}',
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 11.5,
                                         color: context.appColors.textSecondary,
-                                        height: 1.35,
+                                        height: 1.3,
                                       ),
                                     ),
                                   ],
@@ -200,21 +206,21 @@ class _RatesScreenState extends State<RatesScreen> {
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: accentColor.withValues(alpha: 0.65),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withValues(alpha: isDark ? 0.18 : 0.10),
-            blurRadius: 20,
+            color: accentColor.withValues(alpha: isDark ? 0.16 : 0.08),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
